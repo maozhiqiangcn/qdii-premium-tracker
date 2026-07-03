@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Local/editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Build and packaged artifacts
+*.zip
+dist/
+build/
+
+# WeChat DevTools local files
+miniprogram/project.private.config.json
+
+# Logs
+*.log

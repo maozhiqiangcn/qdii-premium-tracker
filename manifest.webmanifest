@@ -1,0 +1,15 @@
+{
+  "name": "LOF基金溢价率",
+  "short_name": "LOF溢价",
+  "start_url": "./mobile.html",
+  "display": "standalone",
+  "background_color": "#f2f7fb",
+  "theme_color": "#eef6ff",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    }
+  ]
+}

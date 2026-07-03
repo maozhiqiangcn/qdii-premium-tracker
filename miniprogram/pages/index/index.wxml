@@ -1,0 +1,115 @@
+<view class="page">
+  <view class="hero">
+    <view class="brand">
+      <view class="avatar">守</view>
+      <view>
+        <view class="title">LOF基金溢价率</view>
+        <view class="subtitle">手机实时监控 · 规则提醒</view>
+      </view>
+    </view>
+    <button class="refresh-btn" size="mini" loading="{{loading}}" bindtap="refresh">刷新</button>
+  </view>
+
+  <view class="status-grid">
+    <view class="status-card">
+      <text class="status-label">基金总数</text>
+      <text class="status-value red">{{totalCount}}</text>
+    </view>
+    <view class="status-card">
+      <text class="status-label">系统状态</text>
+      <text class="status-value">{{statusText}}</text>
+    </view>
+    <view class="status-card">
+      <text class="status-label">系统误差</text>
+      <text class="status-value amber">{{systemError}}</text>
+    </view>
+    <view class="status-card">
+      <text class="status-label">最近刷新</text>
+      <text class="status-value time">{{updatedAt || '--'}}</text>
+    </view>
+  </view>
+
+  <view class="tools">
+    <view class="search-box">
+      <text class="search-icon">⌕</text>
+      <input value="{{query}}" placeholder="代码/名称" bindinput="onSearchInput" />
+      <button wx:if="{{query}}" class="icon-btn" size="mini" bindtap="clearSearch">×</button>
+    </view>
+    <button class="filter-btn" size="mini" bindtap="toggleAlert">{{alertEnabled ? '提醒开' : '提醒关'}}</button>
+  </view>
+
+  <view class="reminder-panel">
+    <view>
+      <text class="panel-title">提醒阈值</text>
+      <text class="panel-note">实时溢价率达到阈值时，前台弹窗并震动。</text>
+    </view>
+    <view class="threshold-control">
+      <input type="digit" value="{{threshold}}" bindinput="onThresholdInput" />
+      <text>%</text>
+    </view>
+  </view>
+
+  <view class="tabs">
+    <block wx:for="{{categories}}" wx:key="key">
+      <button
+        class="tab {{activeCategory === item.key ? 'active' : ''}}"
+        size="mini"
+        data-key="{{item.key}}"
+        bindtap="switchCategory"
+      >
+        {{item.label}}
+      </button>
+    </block>
+  </view>
+
+  <view class="summary-line">
+    <text>筛选：溢价 ≥ {{threshold}}%，平均溢价 {{avgPremium}}</text>
+    <text>共 {{visibleFunds.length}} 条</text>
+  </view>
+
+  <view wx:if="{{error}}" class="error">{{error}}</view>
+
+  <view class="table-head">
+    <text>基金</text>
+    <text>实时净值 / 成交额</text>
+    <text>收盘价 / 涨幅</text>
+    <text>实时溢价率 / 天数</text>
+  </view>
+
+  <view class="fund-list">
+    <view wx:for="{{visibleFunds}}" wx:key="code" class="fund-card {{item.alert ? 'alert' : ''}}">
+      <view class="fund-main">
+        <view class="fund-name">
+          <text class="name">{{item.name || '未命名基金'}}</text>
+          <view class="meta-row">
+            <text class="code">{{item.code}}</text>
+            <text wx:if="{{item.alert}}" class="halt">提醒中</text>
+            <text class="category">{{item.categoryLabel}}</text>
+          </view>
+        </view>
+        <view class="metric">
+          <text class="metric-value">{{item.realtimeEstimate || item.nav || '--'}}</text>
+          <text class="metric-sub">{{item.turnoverWan || '--'}}</text>
+        </view>
+        <view class="metric">
+          <text class="metric-value">{{item.price || '--'}}</text>
+          <text class="metric-sub {{item.pricePctClass}}">{{item.pricePct || '--'}}</text>
+        </view>
+        <view class="premium metric">
+          <text class="metric-value {{item.realtimePremiumClass}}">{{item.realtimePremium || item.latestPremium || '--'}}</text>
+          <text class="metric-sub">{{item.latestPremium || '--'}} / {{item.estimateDate || '--'}}</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{!loading && visibleFunds.length === 0}}" class="empty">
+    没有符合条件的基金。
+  </view>
+
+  <view class="footer">
+    <view>数据来源：HaoETF 公开页面，经你的云托管后端转发。</view>
+    <view>提醒说明：当前为小程序前台提醒；后台推送需要接入微信订阅消息。</view>
+    <view>数据仅作跟踪参考，不构成投资建议。</view>
+  </view>
+</view>

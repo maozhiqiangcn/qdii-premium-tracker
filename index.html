@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>QDII &#28322;&#20215;&#23454;&#26102;&#36319;&#36394;</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <section class="toolbar">
+        <div>
+          <p class="eyebrow">QDII Live Premium</p>
+          <h1>&#33258;&#36873;&#26631;&#30340;&#28322;&#20215;&#36319;&#36394;</h1>
+          <p class="subtitle">
+            &#22330;&#20869;&#20215;&#26684; + &#22522;&#37329;&#20272;&#20540; + &#32654;&#32929;&#22812;&#30424; + &#27719;&#29575;&#20462;&#27491;
+          </p>
+        </div>
+        <div class="toolbar-actions">
+          <label class="field compact">
+            <span>&#28322;&#20215;&#39044;&#35686;</span>
+            <input id="alertThreshold" type="number" step="0.1" value="3" />
+          </label>
+          <button id="refreshBtn" type="button">&#21047;&#26032;&#34892;&#24773;</button>
+          <button id="addFundBtn" type="button">&#26032;&#22686;&#20851;&#27880;</button>
+        </div>
+      </section>
+
+      <section class="market-grid" aria-label="&#23454;&#26102;&#34892;&#24773;">
+        <article>
+          <span>&#32435;&#26031;&#36798;&#20811;100</span>
+          <strong id="nasdaqSpot">--</strong>
+          <small id="nasdaqSpotMeta">--</small>
+        </article>
+        <article>
+          <span>&#32435;&#25351;&#26399;&#36135; / &#22812;&#30424;</span>
+          <strong id="nasdaqFuture">--</strong>
+          <small id="nasdaqFutureMeta">--</small>
+        </article>
+        <article>
+          <span>USD/CNH</span>
+          <strong id="usdCnh">--</strong>
+          <small id="usdCnhMeta">--</small>
+        </article>
+        <article>
+          <span>&#26356;&#26032;&#29366;&#24577;</span>
+          <strong id="quoteStatus">--</strong>
+          <small id="quoteTime">--</small>
+        </article>
+      </section>
+
+      <section class="stats" aria-label="&#27010;&#35272;">
+        <article>
+          <span>&#20851;&#27880;&#25968;&#37327;</span>
+          <strong id="totalCount">0</strong>
+        </article>
+        <article>
+          <span>&#24179;&#22343;&#28322;&#20215;</span>
+          <strong id="avgPremium">--</strong>
+        </article>
+        <article>
+          <span>&#35302;&#21457;&#39044;&#35686;</span>
+          <strong id="highPremium">0</strong>
+        </article>
+        <article>
+          <span>&#26368;&#21518;&#20445;&#23384;</span>
+          <strong id="lastSaved">--</strong>
+        </article>
+      </section>
+
+      <section class="controls" aria-label="&#31579;&#36873;&#19982;&#25490;&#24207;">
+        <label class="search">
+          <span>&#25628;&#32034;</span>
+          <input id="searchInput" type="search" placeholder="&#20195;&#30721; / &#21517;&#31216; / &#26631;&#30340;" />
+        </label>
+        <label class="field">
+          <span>&#36319;&#36394;&#26631;&#30340;</span>
+          <select id="targetFilter">
+            <option value="all">&#20840;&#37096;&#26631;&#30340;</option>
+            <option value="nasdaq100">&#32435;&#26031;&#36798;&#20811;100</option>
+            <option value="sp500">&#26631;&#26222;500</option>
+            <option value="custom">&#33258;&#23450;&#20041;</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>&#25490;&#24207;</span>
+          <select id="sortBy">
+            <option value="premiumDesc">&#28322;&#20215;&#29575;&#39640;&#21040;&#20302;</option>
+            <option value="premiumAsc">&#28322;&#20215;&#29575;&#20302;&#21040;&#39640;</option>
+            <option value="codeAsc">&#20195;&#30721;&#21319;&#24207;</option>
+            <option value="nameAsc">&#21517;&#31216;&#21319;&#24207;</option>
+          </select>
+        </label>
+      </section>
+
+      <section class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>&#20195;&#30721;</th>
+              <th>&#22522;&#37329;</th>
+              <th>&#26631;&#30340;</th>
+              <th>&#34892;&#24773;</th>
+              <th>&#26368;&#26032;&#20272;&#20540;</th>
+              <th>&#26368;&#26032;&#28322;&#20215;</th>
+              <th>&#23454;&#26102;&#20272;&#20540;</th>
+              <th>&#23454;&#26102;&#28322;&#20215;</th>
+              <th>&#29616;&#20215;</th>
+              <th>&#28072;&#36300;</th>
+              <th>&#20272;&#20540;&#26085;&#26399;</th>
+              <th>&#20928;&#20540;</th>
+              <th>&#22791;&#27880;</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="fundTable"></tbody>
+        </table>
+        <p id="emptyState" class="empty" hidden>
+          &#27809;&#26377;&#21305;&#37197;&#30340;&#20851;&#27880;&#39033;&#12290;
+        </p>
+      </section>
+
+      <section class="notes">
+        <h2>&#35745;&#31639;&#35828;&#26126;</h2>
+        <p>
+          &#21442;&#32771; HaoETF &#30340;&#34920;&#26684;&#21475;&#24452;&#65306;&#26368;&#26032;&#20272;&#20540;&#26159; T-1
+          &#20272;&#20540;&#65292;&#26368;&#26032;&#28322;&#20215;&#22522;&#20110;&#29616;&#20215;&#21644;&#26368;&#26032;&#20272;&#20540;&#65307;&#23454;&#26102;&#20272;&#20540;&#33509;&#21487;&#29992;&#65292;&#21017;&#22522;&#20110;&#26368;&#26032;&#20272;&#20540;&#21644;&#30456;&#20851;&#26399;&#36135;&#20877;&#20272;&#31639;&#12290;
+          &#39029;&#38754;&#21482;&#23637;&#31034;&#20320;&#30340;&#33258;&#36873;&#39033;&#65292;&#19981;&#20570;&#20840;&#37327;&#22522;&#37329;&#27744;&#12290;
+        </p>
+      </section>
+    </main>
+
+    <template id="rowTemplate">
+      <tr>
+        <td><input data-key="code" class="code" placeholder="513100" /></td>
+        <td><input data-key="name" placeholder="&#32435;&#25351; ETF" /></td>
+        <td>
+          <select data-key="target">
+            <option value="nasdaq100">&#32435;&#26031;&#36798;&#20811;100</option>
+            <option value="sp500">&#26631;&#26222;500</option>
+            <option value="custom">&#33258;&#23450;&#20041;</option>
+          </select>
+        </td>
+        <td>
+          <select data-key="mode">
+            <option value="auto">&#33258;&#21160;</option>
+            <option value="manual">&#25163;&#21160;</option>
+          </select>
+        </td>
+        <td><strong class="latest-estimate"></strong></td>
+        <td><strong class="latest-premium"></strong></td>
+        <td><strong class="realtime-estimate"></strong><small class="quote-meta"></small></td>
+        <td><strong class="realtime-premium"></strong></td>
+        <td><strong class="price"></strong></td>
+        <td><strong class="price-pct"></strong></td>
+        <td><span class="estimate-date"></span></td>
+        <td><span class="nav-info"></span></td>
+        <td><input data-key="note" /></td>
+        <td><button class="ghost remove" type="button" aria-label="delete">&#21024;&#38500;</button></td>
+      </tr>
+    </template>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
