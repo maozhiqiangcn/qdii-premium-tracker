@@ -1,5 +1,5 @@
 const STORAGE_KEY = "qdii-premium-tracker-v3";
-const OLD_STORAGE_KEY = "qdii-premium-tracker";
+const LEGACY_STORAGE_KEYS = ["qdii-premium-tracker-v2", "qdii-premium-tracker"];
 const AUTO_REFRESH_MS = 60_000;
 const LOCAL_API_ORIGIN = "http://127.0.0.1:8766";
 const CLOUD_API_ORIGIN = "https://flask-7ux0-271799-9-1444624345.sh.run.tcloudbase.com";
@@ -510,26 +510,33 @@ function loadState() {
   };
 
   try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    if (saved?.funds) return normalizeState({ ...fallback, ...saved });
+    const candidates = [STORAGE_KEY, ...LEGACY_STORAGE_KEYS]
+      .map((key) => parseSavedState(key))
+      .filter((saved) => saved?.funds?.length);
+    const saved = candidates.sort((a, b) => b.funds.length - a.funds.length)[0];
 
-    const oldSaved = JSON.parse(localStorage.getItem(OLD_STORAGE_KEY));
-    if (oldSaved?.funds) {
-      return normalizeState({
-        ...fallback,
-        ...oldSaved,
-        funds: oldSaved.funds.map((fund) => ({
-          ...fund,
-          target: normalizeTarget(fund.target || fund.type),
-          mode: "auto",
-          quote: null,
-        })),
-      });
-    }
+    if (saved?.funds) return normalizeState({ ...fallback, ...saved });
 
     return fallback;
   } catch {
     return fallback;
+  }
+}
+
+function parseSavedState(key) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(key));
+    if (!saved?.funds) return null;
+    return {
+      ...saved,
+      funds: saved.funds.map((fund) => ({
+        ...fund,
+        target: normalizeTarget(fund.target || fund.type),
+        quote: null,
+      })),
+    };
+  } catch {
+    return null;
   }
 }
 
