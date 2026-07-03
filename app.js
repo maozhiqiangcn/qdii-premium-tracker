@@ -15,6 +15,19 @@ const text = {
   manual: "\u624b\u52a8",
 };
 
+const OFFICIAL_FUND_NAMES = {
+  161130: "\u7eb3\u65af\u8fbe\u514b100LOF",
+  161128: "\u6807\u666e\u4fe1\u606f\u79d1\u6280LOF",
+  161125: "\u6807\u666e500LOF",
+  513500: "\u6807\u666e500ETF\u535a\u65f6",
+  159696: "\u7eb3\u6307ETF\u6613\u65b9\u8fbe",
+  159501: "\u7eb3\u6307ETF\u5609\u5b9e",
+  513100: "\u7eb3\u6307ETF\u56fd\u6cf0",
+  501312: "\u6d77\u5916\u79d1\u6280LOF",
+  159941: "\u7eb3\u6307ETF",
+  159659: "\u7eb3\u65af\u8fbe\u514b100ETF",
+};
+
 const marketState = {
   spot: null,
   future: null,
@@ -87,7 +100,7 @@ async function refreshQuotes() {
 
   try {
     const autoFunds = state.funds.filter((fund) => fund.mode !== "manual" && normalizeCode(fund.code));
-    const marketPromise = loadEastmoneyQuotes(["100.NDX", "103.NQ00Y", "133.USDCNH", ...autoFunds.map(eastmoneySecid)]);
+    const marketPromise = loadEastmoneyQuotes(["100.NDX100", "103.NQ00Y", "133.USDCNH", ...autoFunds.map(eastmoneySecid)]);
     const haoEtfPromise = loadHaoEtf(autoFunds.map((fund) => normalizeCode(fund.code)));
     const navPromise = loadFundEstimates(autoFunds.map((fund) => normalizeCode(fund.code)));
     const officialNavPromises = autoFunds.map((fund) => loadOfficialEtfNav(normalizeCode(fund.code)));
@@ -99,7 +112,7 @@ async function refreshQuotes() {
     ]);
 
     const eastmoneyQuotes = marketQuotes.status === "fulfilled" ? marketQuotes.value : {};
-    marketState.spot = parseEastmoneyQuote(eastmoneyQuotes["100.NDX"]);
+    marketState.spot = parseEastmoneyQuote(eastmoneyQuotes["100.NDX100"]);
     marketState.future = parseEastmoneyQuote(eastmoneyQuotes["103.NQ00Y"]);
     marketState.usdCnh = parseEastmoneyQuote(eastmoneyQuotes["133.USDCNH"]);
     const haoEtfMap = haoEtfQuotes.status === "fulfilled" ? haoEtfQuotes.value : {};
@@ -496,7 +509,7 @@ function loadState() {
     funds: [
       {
         code: "513100",
-        name: "\u7eb3\u6307ETF",
+        name: OFFICIAL_FUND_NAMES["513100"],
         target: "nasdaq100",
         mode: "auto",
         price: "",
@@ -506,7 +519,7 @@ function loadState() {
       },
       {
         code: "159941",
-        name: "\u7eb3\u6307ETF",
+        name: OFFICIAL_FUND_NAMES["159941"],
         target: "nasdaq100",
         mode: "auto",
         price: "",
@@ -516,7 +529,7 @@ function loadState() {
       },
       {
         code: "159659",
-        name: "\u7eb3\u65af\u8fbe\u514bETF",
+        name: OFFICIAL_FUND_NAMES["159659"],
         target: "nasdaq100",
         mode: "auto",
         price: "",
@@ -526,7 +539,7 @@ function loadState() {
       },
       {
         code: "161130",
-        name: "\u7eb3\u6307LOF",
+        name: OFFICIAL_FUND_NAMES["161130"],
         target: "nasdaq100",
         mode: "auto",
         price: "",
@@ -536,7 +549,7 @@ function loadState() {
       },
       {
         code: "161128",
-        name: "\u6807\u666e\u79d1\u6280",
+        name: OFFICIAL_FUND_NAMES["161128"],
         target: "nasdaq100",
         mode: "auto",
         price: "",
@@ -546,7 +559,7 @@ function loadState() {
       },
       {
         code: "161125",
-        name: "\u6807\u666e500",
+        name: OFFICIAL_FUND_NAMES["161125"],
         target: "sp500",
         mode: "auto",
         price: "",
@@ -556,7 +569,7 @@ function loadState() {
       },
       {
         code: "501312",
-        name: "\u6d77\u5916\u79d1\u6280",
+        name: OFFICIAL_FUND_NAMES["501312"],
         target: "nasdaq100",
         mode: "auto",
         price: "",
@@ -566,8 +579,28 @@ function loadState() {
       },
       {
         code: "513500",
-        name: "\u6807\u666e500ETF",
+        name: OFFICIAL_FUND_NAMES["513500"],
         target: "sp500",
+        mode: "auto",
+        price: "",
+        nav: "",
+        note: "",
+        quote: null,
+      },
+      {
+        code: "159696",
+        name: OFFICIAL_FUND_NAMES["159696"],
+        target: "nasdaq100",
+        mode: "auto",
+        price: "",
+        nav: "",
+        note: "",
+        quote: null,
+      },
+      {
+        code: "159501",
+        name: OFFICIAL_FUND_NAMES["159501"],
+        target: "nasdaq100",
         mode: "auto",
         price: "",
         nav: "",
@@ -627,7 +660,7 @@ function normalizeState(input) {
     ...input,
     funds: input.funds.map((fund) => ({
       code: normalizeCode(fund.code),
-      name: fund.name || "",
+      name: OFFICIAL_FUND_NAMES[normalizeCode(fund.code)] || fund.name || "",
       target: normalizeTarget(fund.target),
       mode: fund.mode === "manual" ? "manual" : "auto",
       price: fund.mode === "manual" ? fund.price ?? "" : "",
