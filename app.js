@@ -1,4 +1,4 @@
-const STORAGE_KEY = "qdii-premium-tracker-v2";
+const STORAGE_KEY = "qdii-premium-tracker-v3";
 const OLD_STORAGE_KEY = "qdii-premium-tracker";
 const AUTO_REFRESH_MS = 60_000;
 const LOCAL_API_ORIGIN = "http://127.0.0.1:8766";
@@ -112,7 +112,9 @@ async function refreshQuotes() {
         : null;
       const officialResult = officialQuotes.status === "fulfilled" ? officialQuotes.value[index] : null;
       const officialQuote = officialResult?.status === "fulfilled" ? officialResult.value : null;
-      const selectedNav = toNumberOrNull(haoEtfQuote?.realtimeEstimate) || toNumberOrNull(haoEtfQuote?.latestEstimate) || officialQuote?.nav || navQuote?.estimate || navQuote?.nav;
+      const selectedNav = haoEtfQuote
+        ? toNumberOrNull(haoEtfQuote.realtimeEstimate) || toNumberOrNull(haoEtfQuote.latestEstimate)
+        : officialQuote?.nav || navQuote?.nav || navQuote?.estimate;
 
       fund.quote = {
         haoetf: haoEtfQuote,
@@ -539,10 +541,10 @@ function normalizeState(input) {
       name: fund.name || "",
       target: normalizeTarget(fund.target),
       mode: fund.mode === "manual" ? "manual" : "auto",
-      price: fund.price ?? "",
-      nav: fund.nav ?? "",
+      price: fund.mode === "manual" ? fund.price ?? "" : "",
+      nav: fund.mode === "manual" ? fund.nav ?? "" : "",
       note: fund.note || "",
-      quote: fund.quote || null,
+      quote: null,
     })),
   };
 }
