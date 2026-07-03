@@ -7,6 +7,19 @@ const AUTO_REFRESH_MS = 60_000;
 const ALERT_COOLDOWN_MS = 5 * 60_000;
 const STORAGE_KEY = "lof-mobile-settings-v1";
 
+const OFFICIAL_FUND_NAMES = {
+  161130: "纳斯达克100LOF",
+  161128: "标普信息科技LOF",
+  161125: "标普500LOF",
+  513500: "标普500ETF博时",
+  159696: "纳指ETF易方达",
+  159501: "纳指ETF嘉实",
+  513100: "纳指ETF国泰",
+  501312: "海外科技LOF",
+  159941: "纳指ETF",
+  159659: "纳斯达克100ETF",
+};
+
 const categories = [
   { key: "all", label: "全部" },
   { key: "fund", label: "股票型LOF" },
@@ -201,6 +214,7 @@ function buildFundView(rawFund) {
 
   return {
     ...rawFund,
+    name: OFFICIAL_FUND_NAMES[String(rawFund.code || "")] || rawFund.name,
     alert: Number.isFinite(sortPremium) && sortPremium >= state.threshold,
     category,
     categoryLabel: categoryLabel(category),

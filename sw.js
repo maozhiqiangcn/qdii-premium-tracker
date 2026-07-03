@@ -1,4 +1,4 @@
-const CACHE_NAME = "lof-premium-mobile-v1";
+const CACHE_NAME = "lof-premium-mobile-v2";
 const ASSETS = [
   "./mobile.html",
   "./mobile.css",
@@ -24,8 +24,14 @@ self.addEventListener("fetch", (event) => {
   if (event.request.url.includes("/api/")) return;
 
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      return cached || fetch(event.request);
-    }),
+    fetch(event.request)
+      .then((response) => {
+        const copy = response.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+        return response;
+      })
+      .catch(() => {
+        return caches.match(event.request);
+      }),
   );
 });
