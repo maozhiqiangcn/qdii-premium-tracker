@@ -2,6 +2,10 @@ const STORAGE_KEY = "qdii-premium-tracker-v2";
 const OLD_STORAGE_KEY = "qdii-premium-tracker";
 const AUTO_REFRESH_MS = 60_000;
 const LOCAL_API_ORIGIN = "http://127.0.0.1:8766";
+const CLOUD_API_ORIGIN = "https://flask-7ux0-271799-9-1444624345.sh.run.tcloudbase.com";
+const API_ORIGIN =
+  window.LOF_API_ORIGIN ||
+  (location.hostname === "127.0.0.1" || location.hostname === "localhost" ? LOCAL_API_ORIGIN : CLOUD_API_ORIGIN);
 
 const text = {
   nasdaq100: "\u7eb3\u65af\u8fbe\u514b100",
@@ -343,7 +347,7 @@ async function loadHaoEtf(codes) {
   const cleanCodes = [...new Set(codes.filter(Boolean))];
   if (!cleanCodes.length) return {};
 
-  const response = await fetch(`${LOCAL_API_ORIGIN}/api/haoetf?codes=${cleanCodes.join(",")}&_=${Date.now()}`);
+  const response = await fetch(`${API_ORIGIN}/api/haoetf?codes=${cleanCodes.join(",")}&_=${Date.now()}`);
   if (!response.ok) throw new Error("HaoETF request failed");
 
   const payload = await response.json();
