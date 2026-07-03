@@ -564,6 +564,16 @@ function loadState() {
         note: "",
         quote: null,
       },
+      {
+        code: "513500",
+        name: "\u6807\u666e500ETF",
+        target: "sp500",
+        mode: "auto",
+        price: "",
+        nav: "",
+        note: "",
+        quote: null,
+      },
     ],
     savedAt: "",
     threshold: 3,
@@ -584,10 +594,8 @@ function loadState() {
 }
 
 function mergeDefaultFunds(saved, defaultFunds) {
-  if (saved.funds.length !== 1 || normalizeCode(saved.funds[0]?.code) !== "513100") return saved;
-
   const byCode = new Map();
-  for (const fund of [...defaultFunds, ...saved.funds]) {
+  for (const fund of [...saved.funds, ...defaultFunds]) {
     const code = normalizeCode(fund.code);
     if (code) byCode.set(code, { ...fund, code });
   }
