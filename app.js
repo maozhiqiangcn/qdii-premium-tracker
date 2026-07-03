@@ -496,12 +496,72 @@ function loadState() {
     funds: [
       {
         code: "513100",
-        name: "\u7eb3\u6307ETF\u56fd\u6cf0",
+        name: "\u7eb3\u6307ETF",
         target: "nasdaq100",
         mode: "auto",
         price: "",
         nav: "",
         note: "\u53ef\u66ff\u6362\u6210\u4f60\u8981\u8ddf\u8e2a\u7684QDII",
+        quote: null,
+      },
+      {
+        code: "159941",
+        name: "\u7eb3\u6307ETF",
+        target: "nasdaq100",
+        mode: "auto",
+        price: "",
+        nav: "",
+        note: "",
+        quote: null,
+      },
+      {
+        code: "159659",
+        name: "\u7eb3\u65af\u8fbe\u514bETF",
+        target: "nasdaq100",
+        mode: "auto",
+        price: "",
+        nav: "",
+        note: "",
+        quote: null,
+      },
+      {
+        code: "161130",
+        name: "\u7eb3\u6307LOF",
+        target: "nasdaq100",
+        mode: "auto",
+        price: "",
+        nav: "",
+        note: "",
+        quote: null,
+      },
+      {
+        code: "161128",
+        name: "\u6807\u666e\u79d1\u6280",
+        target: "nasdaq100",
+        mode: "auto",
+        price: "",
+        nav: "",
+        note: "",
+        quote: null,
+      },
+      {
+        code: "161125",
+        name: "\u6807\u666e500",
+        target: "sp500",
+        mode: "auto",
+        price: "",
+        nav: "",
+        note: "",
+        quote: null,
+      },
+      {
+        code: "501312",
+        name: "\u6d77\u5916\u79d1\u6280",
+        target: "nasdaq100",
+        mode: "auto",
+        price: "",
+        nav: "",
+        note: "",
         quote: null,
       },
     ],
@@ -515,12 +575,26 @@ function loadState() {
       .filter((saved) => saved?.funds?.length);
     const saved = candidates.sort((a, b) => b.funds.length - a.funds.length)[0];
 
-    if (saved?.funds) return normalizeState({ ...fallback, ...saved });
+    if (saved?.funds) return normalizeState(mergeDefaultFunds({ ...fallback, ...saved }, fallback.funds));
 
     return fallback;
   } catch {
     return fallback;
   }
+}
+
+function mergeDefaultFunds(saved, defaultFunds) {
+  if (saved.funds.length !== 1 || normalizeCode(saved.funds[0]?.code) !== "513100") return saved;
+
+  const byCode = new Map();
+  for (const fund of [...defaultFunds, ...saved.funds]) {
+    const code = normalizeCode(fund.code);
+    if (code) byCode.set(code, { ...fund, code });
+  }
+  return {
+    ...saved,
+    funds: [...byCode.values()],
+  };
 }
 
 function parseSavedState(key) {
