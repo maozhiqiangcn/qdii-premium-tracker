@@ -89,12 +89,12 @@ async function refreshQuotes() {
     const autoFunds = state.funds.filter((fund) => fund.mode !== "manual" && normalizeCode(fund.code));
     const marketPromise = loadEastmoneyQuotes(["100.NDX", "103.NQ00Y", "133.USDCNH", ...autoFunds.map(eastmoneySecid)]);
     const haoEtfPromise = loadHaoEtf(autoFunds.map((fund) => normalizeCode(fund.code)));
-    const navPromises = autoFunds.map((fund) => loadFundEstimate(normalizeCode(fund.code)));
+    const navPromise = loadFundEstimates(autoFunds.map((fund) => normalizeCode(fund.code)));
     const officialNavPromises = autoFunds.map((fund) => loadOfficialEtfNav(normalizeCode(fund.code)));
     const [marketQuotes, haoEtfQuotes, navQuotes, officialQuotes] = await Promise.allSettled([
       marketPromise,
       haoEtfPromise,
-      Promise.allSettled(navPromises),
+      navPromise,
       Promise.allSettled(officialNavPromises),
     ]);
 
@@ -107,8 +107,9 @@ async function refreshQuotes() {
     autoFunds.forEach((fund, index) => {
       const tradeQuote = parseEastmoneyQuote(eastmoneyQuotes[eastmoneySecid(fund)]);
       const haoEtfQuote = haoEtfMap[normalizeCode(fund.code)] || null;
-      const navResult = navQuotes.status === "fulfilled" ? navQuotes.value[index] : null;
-      const navQuote = navResult?.status === "fulfilled" ? navResult.value : null;
+      const navQuote = navQuotes.status === "fulfilled" && navQuotes.value[index]?.code === normalizeCode(fund.code)
+        ? navQuotes.value[index]
+        : null;
       const officialResult = officialQuotes.status === "fulfilled" ? officialQuotes.value[index] : null;
       const officialQuote = officialResult?.status === "fulfilled" ? officialResult.value : null;
       const selectedNav = toNumberOrNull(haoEtfQuote?.realtimeEstimate) || toNumberOrNull(haoEtfQuote?.latestEstimate) || officialQuote?.nav || navQuote?.estimate || navQuote?.nav;
@@ -419,6 +420,19 @@ function loadFundEstimate(code) {
 
     document.body.appendChild(script);
   });
+}
+
+async function loadFundEstimates(codes) {
+  const quotes = [];
+  for (const code of codes) {
+    try {
+      quotes.push(await loadFundEstimate(code));
+    } catch (error) {
+      console.warn(error);
+      quotes.push(null);
+    }
+  }
+  return quotes;
 }
 
 function parseEastmoneyQuote(raw) {
