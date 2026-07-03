@@ -125,6 +125,7 @@ async function refreshQuotes() {
       if (toNumberOrNull(haoEtfQuote?.price)) fund.price = toNumberOrNull(haoEtfQuote.price);
       else if (tradeQuote?.price) fund.price = tradeQuote.price;
       if (selectedNav) fund.nav = selectedNav;
+      else fund.nav = "";
       if (!fund.name && (haoEtfQuote?.name || tradeQuote?.name || officialQuote?.name || navQuote?.name)) {
         fund.name = haoEtfQuote?.name || tradeQuote?.name || officialQuote?.name || navQuote?.name;
       }
@@ -285,18 +286,29 @@ function getFundMetrics(fund) {
 
   const liveNav = calculateLiveNav(fund);
   const premium = calculatePremium(fund, liveNav.value);
+  const navQuote = fund.quote?.nav;
+  const latestEstimate = navQuote?.nav || fund.nav;
+  const realtimeEstimate = hasFreshFundEstimate(navQuote) ? navQuote.estimate : null;
+  const latestPremium = calculatePremium(fund, latestEstimate);
+  const realtimePremium = calculatePremium(fund, realtimeEstimate);
   return {
-    latestEstimate: formatNumber(fund.nav, 4),
-    latestPremium: Number.isFinite(premium) ? `${premium.toFixed(2)}%` : "--",
-    realtimeEstimate: "--",
-    realtimePremium: "--",
+    latestEstimate: formatNumber(latestEstimate, 4),
+    latestPremium: Number.isFinite(latestPremium) ? `${latestPremium.toFixed(2)}%` : "--",
+    realtimeEstimate: realtimeEstimate ? formatNumber(realtimeEstimate, 4) : "--",
+    realtimePremium: Number.isFinite(realtimePremium) ? `${realtimePremium.toFixed(2)}%` : "--",
     price: formatNumber(fund.price, 3),
     pricePct: fund.quote?.trade ? signedPct(fund.quote.trade.pct) : "--",
-    estimateDate: "--",
-    navInfo: formatNumber(fund.nav, 4),
+    estimateDate: navQuote?.navDate || "--",
+    navInfo: [formatNumber(navQuote?.nav || fund.nav, 4), navQuote?.navDate].filter(Boolean).join(" / ") || "--",
     source: liveNav.meta,
     sortPremium: premium,
   };
+}
+
+function hasFreshFundEstimate(navQuote) {
+  if (!navQuote?.estimate || !navQuote?.estimateTime) return false;
+  if (navQuote.nav && Math.abs(navQuote.estimate - navQuote.nav) < 0.000001) return false;
+  return true;
 }
 
 function setText(row, selector, value) {
