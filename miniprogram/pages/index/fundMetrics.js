@@ -10,7 +10,7 @@ function buildFundView(rawFund, threshold) {
   const realtimePremium = parsePercent(rawFund.realtimePremium);
   const latestPremium = parsePercent(rawFund.latestPremium);
   const pricePct = parsePercent(rawFund.pricePct);
-  const sortPremium = Number.isFinite(realtimePremium) ? realtimePremium : latestPremium;
+  const sortPremium = getSortablePremium(rawFund, realtimePremium, latestPremium);
   const category = getCategory(rawFund);
 
   return {
@@ -39,11 +39,7 @@ function filterAndSortFunds(funds, options) {
         fund.category === category;
       return matchesQuery && matchesCategory;
     })
-    .sort((a, b) => {
-      if (!Number.isFinite(a.sortPremium)) return 1;
-      if (!Number.isFinite(b.sortPremium)) return -1;
-      return b.sortPremium - a.sortPremium;
-    });
+    .sort(comparePremiumDesc);
 }
 
 function summarizeFunds(funds) {
@@ -72,6 +68,22 @@ function shouldNotifyAlert({ alertFunds, lastSignature, lastAt, now, cooldownMs 
 function parsePercent(value) {
   const number = Number(String(value || "").replace(/[^\d.-]/g, ""));
   return Number.isFinite(number) ? number : NaN;
+}
+
+function getSortablePremium(fund, realtimePremium, latestPremium) {
+  const displayedPremium = parsePercent(fund.realtimePremium || fund.latestPremium);
+  if (Number.isFinite(displayedPremium)) return displayedPremium;
+  if (Number.isFinite(realtimePremium)) return realtimePremium;
+  return latestPremium;
+}
+
+function comparePremiumDesc(a, b) {
+  const premiumA = getSortablePremium(a, a.sortPremium, a.sortPremium);
+  const premiumB = getSortablePremium(b, b.sortPremium, b.sortPremium);
+  if (!Number.isFinite(premiumA)) return 1;
+  if (!Number.isFinite(premiumB)) return -1;
+  if (premiumB !== premiumA) return premiumB - premiumA;
+  return String(a.code || "").localeCompare(String(b.code || ""), "zh-CN");
 }
 
 function percentClass(value) {

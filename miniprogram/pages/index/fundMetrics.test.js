@@ -48,6 +48,20 @@ test("filterAndSortFunds applies search, category, and premium ordering", () => 
   );
 });
 
+test("filterAndSortFunds orders by displayed realtime premium descending", () => {
+  const funds = [
+    buildFundView({ code: "159605", name: "A LOF", realtimePremium: "1.16% test" }, 3),
+    buildFundView({ code: "160216", name: "B LOF", realtimePremium: "3.35% test" }, 3),
+    buildFundView({ code: "164906", name: "C LOF", realtimePremium: "0.45% test" }, 3),
+  ];
+
+  const visible = filterAndSortFunds(funds, { query: "", category: "all" });
+  assert.deepEqual(
+    visible.map((fund) => fund.code),
+    ["160216", "159605", "164906"],
+  );
+});
+
 test("summarizeFunds returns counts and average premium", () => {
   const funds = [
     buildFundView({ code: "501225", name: "全球芯片LOF", realtimePremium: "+4.00%" }, 3),
