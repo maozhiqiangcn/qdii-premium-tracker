@@ -6,6 +6,11 @@ const API_ORIGIN =
 const AUTO_REFRESH_MS = 60_000;
 const ALERT_COOLDOWN_MS = 5 * 60_000;
 const STORAGE_KEY = "lof-mobile-settings-v1";
+const mobileData = window.LOF_MOBILE_DATA || {
+  EXTRA_MOBILE_CODES: [],
+  createHaoEtfUrl: (apiOrigin) => `${apiOrigin}/api/haoetf?_=${Date.now()}`,
+  mergeFundsByCode: (...groups) => groups.flat(),
+};
 
 const OFFICIAL_FUND_NAMES = {
   161130: "纳斯达克100LOF",
@@ -96,7 +101,14 @@ async function refreshFunds() {
     const payload = await response.json();
     if (!payload.ok) throw new Error(payload.error || "接口返回失败");
 
-    state.funds = (payload.data.funds || []).map(buildFundView);
+    let extraFunds = [];
+    try {
+      extraFunds = await fetchHaoEtfFunds(mobileData.EXTRA_MOBILE_CODES);
+    } catch (error) {
+      console.warn(error);
+    }
+    if (!extraFunds.length) extraFunds = await loadExtraFallbackFunds();
+    state.funds = mobileData.mergeFundsByCode(payload.data.funds || [], extraFunds).map(buildFundView);
     setStatus("运行中");
     els.updatedAt.textContent = formatDateTime(new Date());
     render();
@@ -108,6 +120,84 @@ async function refreshFunds() {
   } finally {
     els.refreshBtn.disabled = false;
   }
+}
+
+async function fetchHaoEtfFunds(codes = []) {
+  const response = await fetch(mobileData.createHaoEtfUrl(API_ORIGIN, codes));
+  if (!response.ok) throw new Error(`API status ${response.status}`);
+  const payload = await response.json();
+  if (!payload.ok) throw new Error(payload.error || "API returned an error");
+  return payload.data.funds || [];
+}
+
+async function loadExtraFallbackFunds() {
+  const funds = [];
+  for (const code of mobileData.EXTRA_MOBILE_CODES) {
+    try {
+      const [estimate, quote] = await Promise.all([loadFundEstimate(code), loadMarketQuote(code)]);
+      funds.push(mobileData.buildExtraFundRow({ estimate, quote }));
+    } catch (error) {
+      console.warn(error);
+    }
+  }
+  return funds;
+}
+
+function loadFundEstimate(code) {
+  return new Promise((resolve, reject) => {
+    const callbackName = "jsonpgz";
+    const previous = window[callbackName];
+    const script = document.createElement("script");
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error(`Fund estimate timeout: ${code}`));
+    }, 8000);
+
+    window[callbackName] = (data) => {
+      cleanup();
+      resolve({
+        code: data.fundcode || code,
+        name: data.name,
+        nav: Number(data.dwjz),
+        navDate: data.jzrq,
+        estimate: Number(data.gsz),
+        estimateTime: data.gztime,
+      });
+    };
+
+    script.src = `https://fundgz.1234567.com.cn/js/${code}.js?rt=${Date.now()}`;
+    script.charset = "utf-8";
+    script.onerror = () => {
+      cleanup();
+      reject(new Error(`Fund estimate failed: ${code}`));
+    };
+
+    function cleanup() {
+      clearTimeout(timer);
+      script.remove();
+      if (previous) window[callbackName] = previous;
+      else delete window[callbackName];
+    }
+
+    document.body.appendChild(script);
+  });
+}
+
+async function loadMarketQuote(code) {
+  const secid = `${String(code).startsWith("5") ? "1" : "0"}.${code}`;
+  const url = `https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&secids=${secid}&fields=f12,f14,f2,f3,f4,f6&_=${Date.now()}`;
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Quote status ${response.status}`);
+  const payload = await response.json();
+  const quote = payload?.data?.diff?.[0];
+  if (!quote) throw new Error(`Quote missing: ${code}`);
+  return {
+    code: quote.f12 || code,
+    name: quote.f14,
+    price: Number(quote.f2),
+    pct: Number(quote.f3),
+    turnoverWan: Number(quote.f6) / 10000,
+  };
 }
 
 function render() {

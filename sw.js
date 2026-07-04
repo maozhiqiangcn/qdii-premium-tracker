@@ -1,8 +1,9 @@
-const CACHE_NAME = "lof-premium-mobile-v3";
+const CACHE_NAME = "lof-premium-mobile-v4";
 const ASSETS = [
   "./mobile.html",
   "./mobile.css",
   "./mobile-config.js",
+  "./mobile-data.js",
   "./mobile.js",
   "./manifest.webmanifest",
   "./icon.svg",
