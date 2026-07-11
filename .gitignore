@@ -20,3 +20,6 @@ miniprogram/project.private.config.json
 
 # Logs
 *.log
+
+# Isolated implementation worktrees
+.worktrees/
