@@ -2,10 +2,11 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-COPY requirements.txt .
+COPY cloudrun-flask/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY app.py .
+COPY backend_core.py .
+COPY cloudrun-flask/app.py .
 
 ENV PORT=80
 EXPOSE 80
