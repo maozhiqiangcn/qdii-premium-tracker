@@ -6,6 +6,7 @@ const CLOUD_API_ORIGIN = "https://flask-7ux0-271799-9-1444624345.sh.run.tcloudba
 const API_ORIGIN =
   window.LOF_API_ORIGIN ||
   (location.hostname === "127.0.0.1" || location.hostname === "localhost" ? LOCAL_API_ORIGIN : CLOUD_API_ORIGIN);
+const fundCore = window.LOF_FUND_CORE;
 
 const text = {
   nasdaq100: "\u7eb3\u65af\u8fbe\u514b100",
@@ -15,18 +16,7 @@ const text = {
   manual: "\u624b\u52a8",
 };
 
-const OFFICIAL_FUND_NAMES = {
-  161130: "\u7eb3\u65af\u8fbe\u514b100LOF",
-  161128: "\u6807\u666e\u4fe1\u606f\u79d1\u6280LOF",
-  161125: "\u6807\u666e500LOF",
-  513500: "\u6807\u666e500ETF\u535a\u65f6",
-  159696: "\u7eb3\u6307ETF\u6613\u65b9\u8fbe",
-  159501: "\u7eb3\u6307ETF\u5609\u5b9e",
-  513100: "\u7eb3\u6307ETF\u56fd\u6cf0",
-  501312: "\u6d77\u5916\u79d1\u6280LOF",
-  159941: "\u7eb3\u6307ETF",
-  159659: "\u7eb3\u65af\u8fbe\u514b100ETF",
-};
+const OFFICIAL_FUND_NAMES = fundCore.OFFICIAL_FUND_NAMES;
 
 const marketState = {
   spot: null,
@@ -616,7 +606,7 @@ function loadState() {
     const candidates = [STORAGE_KEY, ...LEGACY_STORAGE_KEYS]
       .map((key) => parseSavedState(key))
       .filter((saved) => saved?.funds?.length);
-    const saved = candidates.sort((a, b) => b.funds.length - a.funds.length)[0];
+    const saved = fundCore.chooseSavedState(candidates);
 
     if (saved?.funds) return normalizeState(mergeDefaultFunds({ ...fallback, ...saved }, fallback.funds));
 
@@ -627,14 +617,9 @@ function loadState() {
 }
 
 function mergeDefaultFunds(saved, defaultFunds) {
-  const byCode = new Map();
-  for (const fund of [...saved.funds, ...defaultFunds]) {
-    const code = normalizeCode(fund.code);
-    if (code) byCode.set(code, { ...fund, code });
-  }
   return {
     ...saved,
-    funds: [...byCode.values()],
+    funds: fundCore.mergePinnedFunds(saved.funds, defaultFunds),
   };
 }
 

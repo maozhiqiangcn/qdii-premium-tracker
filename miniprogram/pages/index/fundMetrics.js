@@ -10,11 +10,12 @@ function buildFundView(rawFund, threshold) {
   const realtimePremium = parsePercent(rawFund.realtimePremium);
   const latestPremium = parsePercent(rawFund.latestPremium);
   const pricePct = parsePercent(rawFund.pricePct);
-  const sortPremium = getSortablePremium(rawFund, realtimePremium, latestPremium);
+  const sortPremium = selectDisplayPremium(rawFund);
   const category = getCategory(rawFund);
 
   return {
     ...rawFund,
+    name: OFFICIAL_FUND_NAMES[String(rawFund.code || "")] || rawFund.name,
     category,
     categoryLabel: CATEGORY_LABELS[category] || "LOF",
     alert: Number.isFinite(sortPremium) && sortPremium >= threshold,
@@ -65,27 +66,6 @@ function shouldNotifyAlert({ alertFunds, lastSignature, lastAt, now, cooldownMs 
   return { notify: now - lastAt >= cooldownMs, signature };
 }
 
-function parsePercent(value) {
-  const number = Number(String(value || "").replace(/[^\d.-]/g, ""));
-  return Number.isFinite(number) ? number : NaN;
-}
-
-function getSortablePremium(fund, realtimePremium, latestPremium) {
-  const displayedPremium = parsePercent(fund.realtimePremium || fund.latestPremium);
-  if (Number.isFinite(displayedPremium)) return displayedPremium;
-  if (Number.isFinite(realtimePremium)) return realtimePremium;
-  return latestPremium;
-}
-
-function comparePremiumDesc(a, b) {
-  const premiumA = getSortablePremium(a, a.sortPremium, a.sortPremium);
-  const premiumB = getSortablePremium(b, b.sortPremium, b.sortPremium);
-  if (!Number.isFinite(premiumA)) return 1;
-  if (!Number.isFinite(premiumB)) return -1;
-  if (premiumB !== premiumA) return premiumB - premiumA;
-  return String(a.code || "").localeCompare(String(b.code || ""), "zh-CN");
-}
-
 function percentClass(value) {
   if (!Number.isFinite(value)) return "neutral";
   if (value > 0) return "positive";
@@ -111,3 +91,9 @@ module.exports = {
   summarizeFunds,
   shouldNotifyAlert,
 };
+const {
+  OFFICIAL_FUND_NAMES,
+  comparePremiumDesc,
+  parsePercent,
+  selectDisplayPremium,
+} = require("../../utils/fund-core");

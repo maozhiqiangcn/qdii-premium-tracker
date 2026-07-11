@@ -6,24 +6,14 @@ const API_ORIGIN =
 const AUTO_REFRESH_MS = 60_000;
 const ALERT_COOLDOWN_MS = 5 * 60_000;
 const STORAGE_KEY = "lof-mobile-settings-v1";
+const fundCore = window.LOF_FUND_CORE;
 const mobileData = window.LOF_MOBILE_DATA || {
   EXTRA_MOBILE_CODES: [],
   createHaoEtfUrl: (apiOrigin) => `${apiOrigin}/api/haoetf?_=${Date.now()}`,
   mergeFundsByCode: (...groups) => groups.flat(),
 };
 
-const OFFICIAL_FUND_NAMES = {
-  161130: "纳斯达克100LOF",
-  161128: "标普信息科技LOF",
-  161125: "标普500LOF",
-  513500: "标普500ETF博时",
-  159696: "纳指ETF易方达",
-  159501: "纳指ETF嘉实",
-  513100: "纳指ETF国泰",
-  501312: "海外科技LOF",
-  159941: "纳指ETF",
-  159659: "纳斯达克100ETF",
-};
+const OFFICIAL_FUND_NAMES = fundCore.OFFICIAL_FUND_NAMES;
 
 const categories = [
   { key: "all", label: "全部" },
