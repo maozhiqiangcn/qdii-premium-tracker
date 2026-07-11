@@ -13,7 +13,7 @@
           <p class="eyebrow">QDII Live Premium</p>
           <h1>&#33258;&#36873;&#26631;&#30340;&#28322;&#20215;&#36319;&#36394;</h1>
           <p class="subtitle">
-            &#22330;&#20869;&#20215;&#26684; + &#22522;&#37329;&#20272;&#20540; + &#32654;&#32929;&#22812;&#30424; + &#27719;&#29575;&#20462;&#27491;
+            场内价格 + 基金净值/估值 + 美股夜盘参考 + 汇率参考
           </p>
         </div>
         <div class="toolbar-actions">
@@ -25,6 +25,8 @@
           <button id="addFundBtn" type="button">&#26032;&#22686;&#20851;&#27880;</button>
         </div>
       </section>
+
+      <p id="dataNotice" class="data-notice" hidden></p>
 
       <section class="market-grid" aria-label="&#23454;&#26102;&#34892;&#24773;">
         <article>
@@ -101,8 +103,8 @@
               <th>&#22522;&#37329;</th>
               <th>&#26631;&#30340;</th>
               <th>&#34892;&#24773;</th>
-              <th>&#26368;&#26032;&#20272;&#20540;</th>
-              <th>&#26368;&#26032;&#28322;&#20215;</th>
+              <th>T-1估值</th>
+              <th>T-1溢价</th>
               <th>&#23454;&#26102;&#20272;&#20540;</th>
               <th>&#23454;&#26102;&#28322;&#20215;</th>
               <th>&#29616;&#20215;</th>
@@ -161,6 +163,7 @@
     </template>
 
     <script src="./miniprogram/utils/fund-core.js?v=20260711-data-reliability"></script>
+    <script src="./client-runtime.js?v=20260711-data-reliability"></script>
     <script src="./app.js?v=20260711-data-reliability"></script>
   </body>
 </html>

@@ -27,6 +27,16 @@ body {
   color: var(--ink);
 }
 
+.data-notice {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border: 1px solid #f0c36d;
+  border-radius: 6px;
+  background: #fff8e6;
+  color: #7a4d00;
+  font-size: 14px;
+}
+
 button,
 input,
 select {

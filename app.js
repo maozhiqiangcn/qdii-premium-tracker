@@ -7,6 +7,9 @@ const API_ORIGIN =
   window.LOF_API_ORIGIN ||
   (location.hostname === "127.0.0.1" || location.hostname === "localhost" ? LOCAL_API_ORIGIN : CLOUD_API_ORIGIN);
 const fundCore = window.LOF_FUND_CORE;
+const clientRuntime = window.LOF_CLIENT_RUNTIME;
+const SNAPSHOT_KEY = "qdii-premium-last-success-v1";
+let refreshInFlight = false;
 
 const text = {
   nasdaq100: "\u7eb3\u65af\u8fbe\u514b100",
@@ -50,6 +53,7 @@ const els = {
   totalCount: document.querySelector("#totalCount"),
   usdCnh: document.querySelector("#usdCnh"),
   usdCnhMeta: document.querySelector("#usdCnhMeta"),
+  dataNotice: document.querySelector("#dataNotice"),
 };
 
 els.alertThreshold.value = state.threshold;
@@ -86,44 +90,49 @@ els.alertThreshold.addEventListener("input", () => {
 });
 
 async function refreshQuotes() {
+  if (refreshInFlight) return;
+  refreshInFlight = true;
+  els.refreshBtn.disabled = true;
   setStatus("\u5237\u65b0\u4e2d...");
 
   try {
     const autoFunds = state.funds.filter((fund) => fund.mode !== "manual" && normalizeCode(fund.code));
     const marketPromise = loadEastmoneyQuotes(["100.NDX100", "103.NQ00Y", "133.USDCNH", ...autoFunds.map(eastmoneySecid)]);
-    const haoEtfPromise = loadHaoEtf(autoFunds.map((fund) => normalizeCode(fund.code)));
-    const navPromise = loadFundEstimates(autoFunds.map((fund) => normalizeCode(fund.code)));
-    const officialNavPromises = autoFunds.map((fund) => loadOfficialEtfNav(normalizeCode(fund.code)));
-    const [marketQuotes, haoEtfQuotes, navQuotes, officialQuotes] = await Promise.allSettled([
-      marketPromise,
-      haoEtfPromise,
-      navPromise,
-      Promise.allSettled(officialNavPromises),
-    ]);
+    const [marketQuotes, haoEtfResult] = await Promise.allSettled([marketPromise, loadHaoEtf()]);
 
     const eastmoneyQuotes = marketQuotes.status === "fulfilled" ? marketQuotes.value : {};
     marketState.spot = parseEastmoneyQuote(eastmoneyQuotes["100.NDX100"]);
     marketState.future = parseEastmoneyQuote(eastmoneyQuotes["103.NQ00Y"]);
     marketState.usdCnh = parseEastmoneyQuote(eastmoneyQuotes["133.USDCNH"]);
-    const haoEtfMap = haoEtfQuotes.status === "fulfilled" ? haoEtfQuotes.value : {};
+    let payload = haoEtfResult.status === "fulfilled" ? haoEtfResult.value : null;
+    let usingSnapshot = false;
+    if (payload?.ok) clientRuntime.saveSnapshot(localStorage, SNAPSHOT_KEY, payload);
+    else {
+      payload = clientRuntime.loadSnapshot(localStorage, SNAPSHOT_KEY);
+      usingSnapshot = Boolean(payload);
+    }
+    if (!payload?.ok) throw haoEtfResult.reason || new Error("基金行情接口失败");
+    const payloadIsStale = usingSnapshot || payload.stale;
+    const haoEtfMap = Object.fromEntries(
+      (payload.data?.funds || []).map((fund) => [
+        fund.code,
+        payloadIsStale
+          ? { ...fund, realtimeEstimate: "", realtimePremium: "", realtimeFresh: false }
+          : fund,
+      ]),
+    );
+    renderDataNotice(payload, usingSnapshot, haoEtfResult.reason);
 
-    autoFunds.forEach((fund, index) => {
+    autoFunds.forEach((fund) => {
       const tradeQuote = parseEastmoneyQuote(eastmoneyQuotes[eastmoneySecid(fund)]);
       const haoEtfQuote = haoEtfMap[normalizeCode(fund.code)] || null;
-      const navQuote = navQuotes.status === "fulfilled" && navQuotes.value[index]?.code === normalizeCode(fund.code)
-        ? navQuotes.value[index]
-        : null;
-      const officialResult = officialQuotes.status === "fulfilled" ? officialQuotes.value[index] : null;
-      const officialQuote = officialResult?.status === "fulfilled" ? officialResult.value : null;
       const selectedNav = haoEtfQuote
         ? toNumberOrNull(haoEtfQuote.realtimeEstimate) || toNumberOrNull(haoEtfQuote.latestEstimate)
-        : officialQuote?.nav || navQuote?.nav || navQuote?.estimate;
+        : null;
 
       fund.quote = {
         haoetf: haoEtfQuote,
-        official: officialQuote,
         trade: tradeQuote,
-        nav: navQuote,
         updatedAt: new Date().toISOString(),
       };
 
@@ -131,20 +140,37 @@ async function refreshQuotes() {
       else if (tradeQuote?.price) fund.price = tradeQuote.price;
       if (selectedNav) fund.nav = selectedNav;
       else fund.nav = "";
-      if (!fund.name && (haoEtfQuote?.name || tradeQuote?.name || officialQuote?.name || navQuote?.name)) {
-        fund.name = haoEtfQuote?.name || tradeQuote?.name || officialQuote?.name || navQuote?.name;
+      if (!fund.name && (haoEtfQuote?.name || tradeQuote?.name)) {
+        fund.name = haoEtfQuote?.name || tradeQuote?.name;
       }
     });
 
     marketState.lastRefresh = new Date().toISOString();
-    setStatus(marketQuotes.status === "fulfilled" ? "\u5df2\u66f4\u65b0" : "\u90e8\u5206\u66f4\u65b0");
+    setStatus(payloadIsStale ? "缓存数据" : marketQuotes.status === "fulfilled" ? "\u5df2\u66f4\u65b0" : "\u90e8\u5206\u66f4\u65b0");
     persist();
   } catch (error) {
     console.error(error);
     setStatus("\u63a5\u53e3\u5931\u8d25");
+    renderDataNotice(null, false, error);
+  } finally {
+    refreshInFlight = false;
+    els.refreshBtn.disabled = false;
   }
 
   render();
+}
+
+function renderDataNotice(payload, usingSnapshot, error) {
+  if (!els.dataNotice) return;
+  if (!payload) {
+    els.dataNotice.textContent = `行情更新失败：${error?.message || "请稍后重试"}`;
+    els.dataNotice.hidden = false;
+    return;
+  }
+  const status = clientRuntime.describePayloadStatus({ ...payload, stale: usingSnapshot || payload.stale });
+  const warnings = payload.warnings?.length ? ` · ${payload.warnings.join("；")}` : "";
+  els.dataNotice.textContent = `${status.label} · ${status.detail}${warnings}`;
+  els.dataNotice.hidden = !(usingSnapshot || payload.stale || payload.warnings?.length);
 }
 
 function render() {
@@ -361,95 +387,10 @@ async function loadEastmoneyQuotes(secids) {
   return quotes;
 }
 
-async function loadHaoEtf(codes) {
-  const cleanCodes = [...new Set(codes.filter(Boolean))];
-  if (!cleanCodes.length) return {};
-
-  const response = await fetch(`${API_ORIGIN}/api/haoetf?codes=${cleanCodes.join(",")}&_=${Date.now()}`);
-  if (!response.ok) throw new Error("HaoETF request failed");
-
-  const payload = await response.json();
-  const funds = payload?.data?.funds || [];
-  return Object.fromEntries(funds.map((fund) => [fund.code, fund]));
-}
-
-async function loadOfficialEtfNav(code) {
-  if (!code.startsWith("5") || !location.origin.startsWith("http://127.0.0.1:8766")) {
-    return null;
-  }
-
-  const response = await fetch(`/api/sse-etf?code=${code}&_=${Date.now()}`);
-  if (!response.ok) throw new Error(`SSE ETF NAV failed: ${code}`);
-
-  const payload = await response.json();
-  const row = payload?.data;
-  if (!payload?.ok || !row) return null;
-
-  return {
-    code,
-    name: row.FUND_NAME,
-    nav: moneyToNumber(row.NAV),
-    navPerCu: moneyToNumber(row.NAVPERCU),
-    tradingDay: formatCompactDate(row.TRADING_DAY),
-    previousTradingDay: formatCompactDate(row.PRE_TRADING_DAY),
-    publishIopv: row.PUBLISH_IOPV,
-    creationRedemption: row.CREATION_REDEMPTION,
-    source: "\u4e0a\u4ea4\u6240\u7533\u8d4e\u6e05\u5355",
-  };
-}
-
-function loadFundEstimate(code) {
-  return new Promise((resolve, reject) => {
-    const callbackName = "jsonpgz";
-    const previous = window[callbackName];
-    const script = document.createElement("script");
-    const timer = setTimeout(() => {
-      cleanup();
-      reject(new Error(`Fund estimate timeout: ${code}`));
-    }, 8000);
-
-    window[callbackName] = (data) => {
-      cleanup();
-      resolve({
-        code: data.fundcode,
-        name: data.name,
-        nav: toNumber(data.dwjz),
-        navDate: data.jzrq,
-        estimate: toNumber(data.gsz),
-        estimatePct: toNumber(data.gszzl),
-        estimateTime: data.gztime,
-      });
-    };
-
-    script.src = `https://fundgz.1234567.com.cn/js/${code}.js?rt=${Date.now()}`;
-    script.charset = "utf-8";
-    script.onerror = () => {
-      cleanup();
-      reject(new Error(`Fund estimate failed: ${code}`));
-    };
-
-    function cleanup() {
-      clearTimeout(timer);
-      script.remove();
-      if (previous) window[callbackName] = previous;
-      else delete window[callbackName];
-    }
-
-    document.body.appendChild(script);
-  });
-}
-
-async function loadFundEstimates(codes) {
-  const quotes = [];
-  for (const code of codes) {
-    try {
-      quotes.push(await loadFundEstimate(code));
-    } catch (error) {
-      console.warn(error);
-      quotes.push(null);
-    }
-  }
-  return quotes;
+async function loadHaoEtf() {
+  const payload = await clientRuntime.fetchJsonWithRetry(`${API_ORIGIN}/api/haoetf?_=${Date.now()}`);
+  if (!payload?.ok) throw new Error(payload?.error || "基金行情接口失败");
+  return payload;
 }
 
 function parseEastmoneyQuote(raw) {
@@ -690,17 +631,6 @@ function pctNumber(value) {
 function formatNumber(value, digits) {
   const number = Number(value);
   return Number.isFinite(number) && number ? number.toFixed(digits) : "--";
-}
-
-function moneyToNumber(value) {
-  const number = Number(String(value || "").replace(/[^\d.-]/g, ""));
-  return Number.isFinite(number) ? number : 0;
-}
-
-function formatCompactDate(value) {
-  const text = String(value || "");
-  if (!/^\d{8}$/.test(text)) return text;
-  return `${text.slice(0, 4)}-${text.slice(4, 6)}-${text.slice(6, 8)}`;
 }
 
 function numberOrEmpty(value) {
