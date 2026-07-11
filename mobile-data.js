@@ -74,10 +74,20 @@
     return match ? `${match[2]}-${match[3]}` : "";
   }
 
+  function createSettingsSnapshot(state) {
+    return {
+      alertEnabled: state.alertEnabled !== false,
+      threshold: Number(state.threshold) || 0,
+      lastAlertAt: Number(state.lastAlertAt) || 0,
+      lastAlertSignature: String(state.lastAlertSignature || ""),
+    };
+  }
+
   const api = {
     EXTRA_MOBILE_CODES,
     buildExtraFundRow,
     createHaoEtfUrl,
+    createSettingsSnapshot,
     mergeFundsByCode,
   };
 

@@ -1,7 +1,43 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
 
-const { EXTRA_MOBILE_CODES, buildExtraFundRow, mergeFundsByCode, createHaoEtfUrl } = require("./mobile-data");
+const {
+  EXTRA_MOBILE_CODES,
+  buildExtraFundRow,
+  createHaoEtfUrl,
+  createSettingsSnapshot,
+  mergeFundsByCode,
+} = require("./mobile-data");
+
+test("mobile labels describe the values actually displayed", () => {
+  const html = fs.readFileSync("mobile.html", "utf8");
+  assert.match(html, /估值变动/);
+  assert.match(html, /T-1溢价\/日期/);
+  assert.doesNotMatch(html, /系统误差|溢价天数/);
+});
+
+test("mobile settings persist alert cooldown state", () => {
+  const snapshot = createSettingsSnapshot({
+    alertEnabled: true,
+    threshold: 3,
+    lastAlertAt: 123,
+    lastAlertSignature: "513100,513500",
+  });
+  assert.deepEqual(snapshot, {
+    alertEnabled: true,
+    threshold: 3,
+    lastAlertAt: 123,
+    lastAlertSignature: "513100,513500",
+  });
+});
+
+test("service worker caches only same-origin static assets", () => {
+  const source = fs.readFileSync("sw.js", "utf8");
+  assert.match(source, /url\.origin !== self\.location\.origin/);
+  assert.match(source, /STATIC_PATHS\.has\(url\.pathname\)/);
+  assert.doesNotMatch(source, /cache\.put\(event\.request/);
+});
 
 test("mobile extra fund codes include 501312", () => {
   assert.equal(EXTRA_MOBILE_CODES.includes("501312"), true);

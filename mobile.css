@@ -274,6 +274,16 @@ footer p {
   padding: 10px 12px;
 }
 
+.notice {
+  margin: 12px 0;
+  padding: 10px 12px;
+  border: 1px solid #f0c36d;
+  border-radius: 6px;
+  background: #fff8e6;
+  color: #7a4d00;
+  font-size: 13px;
+}
+
 .list-panel {
   overflow: hidden;
 }

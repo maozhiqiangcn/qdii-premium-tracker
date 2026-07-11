@@ -5,8 +5,12 @@ const API_ORIGIN =
     : "https://flask-7ux0-271799-9-1444624345.sh.run.tcloudbase.com");
 const AUTO_REFRESH_MS = 60_000;
 const ALERT_COOLDOWN_MS = 5 * 60_000;
-const STORAGE_KEY = "lof-mobile-settings-v1";
+const STORAGE_KEY = "lof-mobile-settings-v2";
+const LEGACY_STORAGE_KEY = "lof-mobile-settings-v1";
+const SNAPSHOT_KEY = "lof-mobile-last-success-v1";
 const fundCore = window.LOF_FUND_CORE;
+const clientRuntime = window.LOF_CLIENT_RUNTIME;
+let refreshInFlight = false;
 const mobileData = window.LOF_MOBILE_DATA || {
   EXTRA_MOBILE_CODES: [],
   createHaoEtfUrl: (apiOrigin) => `${apiOrigin}/api/haoetf?_=${Date.now()}`,
@@ -37,12 +41,13 @@ const els = {
   alertToggle: document.querySelector("#alertToggle"),
   emptyState: document.querySelector("#emptyState"),
   errorBox: document.querySelector("#errorBox"),
+  dataNotice: document.querySelector("#dataNotice"),
+  estimateChange: document.querySelector("#estimateChange"),
   fundList: document.querySelector("#fundList"),
   refreshBtn: document.querySelector("#refreshBtn"),
   searchInput: document.querySelector("#searchInput"),
   statusText: document.querySelector("#statusText"),
   summaryText: document.querySelector("#summaryText"),
-  systemError: document.querySelector("#systemError"),
   tabs: document.querySelector("#tabs"),
   thresholdInput: document.querySelector("#thresholdInput"),
   totalCount: document.querySelector("#totalCount"),
@@ -81,26 +86,38 @@ function bindEvents() {
 }
 
 async function refreshFunds() {
+  if (refreshInFlight) return;
+  refreshInFlight = true;
   setStatus("更新中");
   els.errorBox.hidden = true;
+  els.dataNotice.hidden = true;
   els.refreshBtn.disabled = true;
 
   try {
-    const response = await fetch(`${API_ORIGIN}/api/haoetf?_=${Date.now()}`);
-    if (!response.ok) throw new Error(`接口状态 ${response.status}`);
-    const payload = await response.json();
-    if (!payload.ok) throw new Error(payload.error || "接口返回失败");
-
-    let extraFunds = [];
+    let payload;
+    let networkError;
     try {
-      extraFunds = await fetchHaoEtfFunds(mobileData.EXTRA_MOBILE_CODES);
+      payload = await clientRuntime.fetchJsonWithRetry(`${API_ORIGIN}/api/haoetf?_=${Date.now()}`);
+      if (!payload?.ok) throw new Error(payload?.error || "接口返回失败");
+      clientRuntime.saveSnapshot(localStorage, SNAPSHOT_KEY, payload);
     } catch (error) {
-      console.warn(error);
+      networkError = error;
+      payload = clientRuntime.loadSnapshot(localStorage, SNAPSHOT_KEY);
     }
-    if (!extraFunds.length) extraFunds = await loadExtraFallbackFunds();
-    state.funds = mobileData.mergeFundsByCode(payload.data.funds || [], extraFunds).map(buildFundView);
-    setStatus("运行中");
-    els.updatedAt.textContent = formatDateTime(new Date());
+    if (!payload?.ok) throw networkError || new Error("接口返回失败");
+
+    const usingSnapshot = Boolean(networkError);
+    const payloadIsStale = usingSnapshot || payload.stale;
+    state.funds = (payload.data?.funds || [])
+      .map((fund) =>
+        payloadIsStale
+          ? { ...fund, realtimeEstimate: "", realtimePremium: "", realtimeFresh: false }
+          : fund,
+      )
+      .map(buildFundView);
+    setStatus(payloadIsStale ? "缓存数据" : "运行中");
+    els.updatedAt.textContent = formatPayloadTime(payload);
+    renderDataNotice(payload, payloadIsStale, networkError);
     render();
     maybeNotify();
   } catch (error) {
@@ -108,86 +125,9 @@ async function refreshFunds() {
     els.errorBox.textContent = `刷新失败：${formatError(error)}`;
     els.errorBox.hidden = false;
   } finally {
+    refreshInFlight = false;
     els.refreshBtn.disabled = false;
   }
-}
-
-async function fetchHaoEtfFunds(codes = []) {
-  const response = await fetch(mobileData.createHaoEtfUrl(API_ORIGIN, codes));
-  if (!response.ok) throw new Error(`API status ${response.status}`);
-  const payload = await response.json();
-  if (!payload.ok) throw new Error(payload.error || "API returned an error");
-  return payload.data.funds || [];
-}
-
-async function loadExtraFallbackFunds() {
-  const funds = [];
-  for (const code of mobileData.EXTRA_MOBILE_CODES) {
-    try {
-      const [estimate, quote] = await Promise.all([loadFundEstimate(code), loadMarketQuote(code)]);
-      funds.push(mobileData.buildExtraFundRow({ estimate, quote }));
-    } catch (error) {
-      console.warn(error);
-    }
-  }
-  return funds;
-}
-
-function loadFundEstimate(code) {
-  return new Promise((resolve, reject) => {
-    const callbackName = "jsonpgz";
-    const previous = window[callbackName];
-    const script = document.createElement("script");
-    const timer = setTimeout(() => {
-      cleanup();
-      reject(new Error(`Fund estimate timeout: ${code}`));
-    }, 8000);
-
-    window[callbackName] = (data) => {
-      cleanup();
-      resolve({
-        code: data.fundcode || code,
-        name: data.name,
-        nav: Number(data.dwjz),
-        navDate: data.jzrq,
-        estimate: Number(data.gsz),
-        estimateTime: data.gztime,
-      });
-    };
-
-    script.src = `https://fundgz.1234567.com.cn/js/${code}.js?rt=${Date.now()}`;
-    script.charset = "utf-8";
-    script.onerror = () => {
-      cleanup();
-      reject(new Error(`Fund estimate failed: ${code}`));
-    };
-
-    function cleanup() {
-      clearTimeout(timer);
-      script.remove();
-      if (previous) window[callbackName] = previous;
-      else delete window[callbackName];
-    }
-
-    document.body.appendChild(script);
-  });
-}
-
-async function loadMarketQuote(code) {
-  const secid = `${String(code).startsWith("5") ? "1" : "0"}.${code}`;
-  const url = `https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&secids=${secid}&fields=f12,f14,f2,f3,f4,f6&_=${Date.now()}`;
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`Quote status ${response.status}`);
-  const payload = await response.json();
-  const quote = payload?.data?.diff?.[0];
-  if (!quote) throw new Error(`Quote missing: ${code}`);
-  return {
-    code: quote.f12 || code,
-    name: quote.f14,
-    price: Number(quote.f2),
-    pct: Number(quote.f3),
-    turnoverWan: Number(quote.f6) / 10000,
-  };
 }
 
 function render() {
@@ -195,7 +135,7 @@ function render() {
   const summary = summarizeFunds(state.funds);
 
   els.totalCount.textContent = summary.total;
-  els.systemError.textContent = calculateSystemError(state.funds);
+  els.estimateChange.textContent = calculateEstimateChange(state.funds);
   els.summaryText.textContent = `筛选：溢价 >= ${state.threshold}%｜平均溢价 ${summary.avgPremium}`;
   els.visibleCount.textContent = `共 ${visibleFunds.length} 条`;
   els.alertToggle.textContent = state.alertEnabled ? "提醒开" : "提醒关";
@@ -263,6 +203,7 @@ function maybeNotify() {
 
   state.lastAlertAt = Date.now();
   state.lastAlertSignature = result.signature;
+  saveSettings();
   const message = alertFunds
     .map((fund) => `${fund.name || fund.code} ${fund.realtimePremium || fund.latestPremium || ""}`)
     .join("\n");
@@ -289,7 +230,7 @@ function buildFundView(rawFund) {
   const realtimePremium = parsePercent(rawFund.realtimePremium);
   const latestPremium = parsePercent(rawFund.latestPremium);
   const pricePct = parsePercent(rawFund.pricePct);
-  const sortPremium = getSortablePremium(rawFund, realtimePremium, latestPremium);
+  const sortPremium = fundCore.selectDisplayPremium(rawFund);
   const category = getCategory(rawFund);
 
   return {
@@ -317,7 +258,7 @@ function filterAndSortFunds() {
         fund.category === state.activeCategory;
       return matchesQuery && matchesCategory;
     })
-    .sort(comparePremiumDesc);
+    .sort(fundCore.comparePremiumDesc);
 }
 
 function summarizeFunds(funds) {
@@ -344,7 +285,7 @@ function shouldNotifyAlert(alertFunds) {
   };
 }
 
-function calculateSystemError(funds) {
+function calculateEstimateChange(funds) {
   const errors = funds
     .map((fund) => Math.abs(parsePercent(fund.realtimePremium) - parsePercent(fund.latestPremium)))
     .filter(Number.isFinite);
@@ -363,26 +304,7 @@ function categoryLabel(category) {
   return categories.find((item) => item.key === category)?.label || "LOF";
 }
 
-function parsePercent(value) {
-  const number = Number(String(value || "").replace(/[^\d.-]/g, ""));
-  return Number.isFinite(number) ? number : NaN;
-}
-
-function getSortablePremium(fund, realtimePremium, latestPremium) {
-  const displayedPremium = parsePercent(fund.realtimePremium || fund.latestPremium);
-  if (Number.isFinite(displayedPremium)) return displayedPremium;
-  if (Number.isFinite(realtimePremium)) return realtimePremium;
-  return latestPremium;
-}
-
-function comparePremiumDesc(a, b) {
-  const premiumA = getSortablePremium(a, a.sortPremium, a.sortPremium);
-  const premiumB = getSortablePremium(b, b.sortPremium, b.sortPremium);
-  if (!Number.isFinite(premiumA)) return 1;
-  if (!Number.isFinite(premiumB)) return -1;
-  if (premiumB !== premiumA) return premiumB - premiumA;
-  return String(a.code || "").localeCompare(String(b.code || ""), "zh-CN");
-}
+const parsePercent = fundCore.parsePercent;
 
 function percentClass(value) {
   if (!Number.isFinite(value)) return "neutral";
@@ -397,10 +319,12 @@ function setStatus(status) {
 
 function loadSettings() {
   try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY));
     if (!saved) return;
     state.alertEnabled = saved.alertEnabled !== false;
     state.threshold = Number(saved.threshold) || state.threshold;
+    state.lastAlertAt = Number(saved.lastAlertAt) || 0;
+    state.lastAlertSignature = String(saved.lastAlertSignature || "");
     els.thresholdInput.value = state.threshold;
   } catch {
     // Keep defaults.
@@ -408,13 +332,20 @@ function loadSettings() {
 }
 
 function saveSettings() {
-  localStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify({
-      alertEnabled: state.alertEnabled,
-      threshold: state.threshold,
-    }),
-  );
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(mobileData.createSettingsSnapshot(state)));
+}
+
+function renderDataNotice(payload, stale, error) {
+  const status = clientRuntime.describePayloadStatus({ ...payload, stale });
+  const warnings = payload.warnings?.length ? ` · ${payload.warnings.join("；")}` : "";
+  const failure = error ? ` · 本次刷新失败：${formatError(error)}` : "";
+  els.dataNotice.textContent = `${status.label} · ${status.detail}${warnings}${failure}`;
+  els.dataNotice.hidden = !(stale || payload.warnings?.length || error);
+}
+
+function formatPayloadTime(payload) {
+  const date = new Date(payload.sourceUpdatedAt || payload.generatedAt || Date.now());
+  return Number.isNaN(date.getTime()) ? "--" : formatDateTime(date);
 }
 
 function formatDateTime(date) {
