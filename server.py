@@ -5,7 +5,7 @@ import json
 import re
 import time
 
-from backend_core import build_response, parse_haoetf
+from backend_core import append_extra_funds, build_response, is_cache_usable, load_haoetf_source
 
 HAOETF_CACHE = {"data": None, "updated_at": 0}
 
@@ -72,7 +72,7 @@ class Handler(SimpleHTTPRequestHandler):
                 data["funds"] = [row for row in data["funds"] if row.get("code") in codes]
             self.write_json(build_response(data))
         except Exception as exc:
-            if HAOETF_CACHE["data"]:
+            if HAOETF_CACHE["data"] and is_cache_usable(HAOETF_CACHE["updated_at"], time.time()):
                 data = HAOETF_CACHE["data"].copy()
                 if codes:
                     data["funds"] = [row for row in data["funds"] if row.get("code") in codes]
@@ -93,10 +93,7 @@ class Handler(SimpleHTTPRequestHandler):
 
 
 def load_haoetf():
-    request = Request("https://www.haoetf.com/", headers={"User-Agent": "Mozilla/5.0"})
-    with urlopen(request, timeout=15) as response:
-        html = response.read().decode("utf-8", errors="replace")
-    data = parse_haoetf(html)
+    data = append_extra_funds(load_haoetf_source(timeout=12, retries=1), timeout=12)
     if data["funds"]:
         HAOETF_CACHE["data"] = data
         HAOETF_CACHE["updated_at"] = time.time()

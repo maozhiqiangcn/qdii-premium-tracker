@@ -1,6 +1,9 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from html.parser import HTMLParser
+import json
 import re
+import time
+from urllib.request import Request, urlopen
 
 
 NUMBER_PATTERN = re.compile(r"^-?\d+(?:\.\d+)?$")
@@ -142,3 +145,145 @@ def build_response(data, stale=False, cache_age_seconds=0, now=None):
         "cacheAgeSeconds": max(0, int(cache_age_seconds or 0)),
         "warnings": list(data.get("warnings") or []),
     }
+
+
+def is_cache_usable(updated_at, now, max_age=21600):
+    try:
+        age = float(now) - float(updated_at)
+    except (TypeError, ValueError):
+        return False
+    return 0 <= age <= max_age
+
+
+def _number(value):
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number
+
+
+def _format_number(value, digits):
+    return f"{value:.{digits}f}" if value is not None else ""
+
+
+def _format_percent(value, signed=False):
+    if value is None:
+        return ""
+    prefix = "+" if signed and value > 0 else ""
+    return f"{prefix}{value:.2f}%"
+
+
+def _premium(price, nav):
+    if price is None or nav in (None, 0):
+        return None
+    return (price / nav - 1) * 100
+
+
+def _china_date(now):
+    if isinstance(now, str):
+        return now[:10]
+    if isinstance(now, datetime):
+        return now.astimezone(timezone(timedelta(hours=8))).strftime("%Y-%m-%d")
+    return datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d")
+
+
+def build_extra_fund_row(code, estimate, quote, now=None):
+    nav = _number(estimate.get("dwjz"))
+    estimated_nav = _number(estimate.get("gsz"))
+    price = _number(quote.get("price"))
+    estimate_time = str(estimate.get("gztime") or "")
+    realtime_fresh = (
+        estimated_nav is not None
+        and estimate_time[:10] == _china_date(now)
+        and (nav is None or abs(estimated_nav - nav) >= 0.000001)
+    )
+    realtime_nav = estimated_nav if realtime_fresh else None
+    nav_date = str(estimate.get("jzrq") or "")
+
+    return {
+        "code": str(code),
+        "name": quote.get("name") or estimate.get("name") or str(code),
+        "realtimeEstimate": _format_number(realtime_nav, 4),
+        "realtimePremium": _format_percent(_premium(price, realtime_nav)),
+        "latestEstimate": _format_number(nav, 4),
+        "latestPremium": _format_percent(_premium(price, nav)),
+        "estimateDate": nav_date[5:10] if len(nav_date) >= 10 else nav_date,
+        "price": _format_number(price, 3),
+        "pricePct": _format_percent(_number(quote.get("pct")), signed=True),
+        "turnoverWan": _format_number(_number(quote.get("turnoverWan")), 2),
+        "sharesWan": "",
+        "newSharesWan": "",
+        "nav": _format_number(nav, 4),
+        "navPct": "",
+        "navDate": nav_date[5:10] if len(nav_date) >= 10 else nav_date,
+        "indexPct": "",
+        "purchaseLimit": "",
+        "purchaseFee": "",
+        "redeemFee": "",
+        "source": "天天基金/东方财富",
+        "realtimeFresh": realtime_fresh,
+        "estimateTime": estimate_time,
+    }
+
+
+def parse_jsonp_payload(text, callback):
+    pattern = rf"^\s*{re.escape(callback)}\s*\((.*)\)\s*;?\s*$"
+    match = re.match(pattern, text or "", re.DOTALL)
+    if not match:
+        raise ValueError("invalid JSONP payload")
+    return json.loads(match.group(1))
+
+
+def _fetch_text(url, timeout=12):
+    request = Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urlopen(request, timeout=timeout) as response:
+        return response.read().decode("utf-8", errors="replace")
+
+
+def load_haoetf_source(url="https://www.haoetf.com/", timeout=12, retries=1):
+    last_error = None
+    for attempt in range(retries + 1):
+        try:
+            return parse_haoetf(_fetch_text(url, timeout=timeout))
+        except Exception as exc:
+            last_error = exc
+            if attempt < retries:
+                time.sleep(0.2)
+    raise last_error
+
+
+def load_extra_fund(code="501312", timeout=12, now=None):
+    estimate_text = _fetch_text(f"https://fundgz.1234567.com.cn/js/{code}.js?rt={int(time.time() * 1000)}", timeout)
+    estimate = parse_jsonp_payload(estimate_text, "jsonpgz")
+    secid = f"{'1' if str(code).startswith('5') else '0'}.{code}"
+    quote_url = (
+        "https://push2.eastmoney.com/api/qt/ulist.np/get"
+        f"?fltt=2&secids={secid}&fields=f12,f14,f2,f3,f4,f6&_={int(time.time() * 1000)}"
+    )
+    quote_payload = json.loads(_fetch_text(quote_url, timeout))
+    raw_quote = (quote_payload.get("data") or {}).get("diff") or []
+    if not raw_quote:
+        raise ValueError(f"market quote missing: {code}")
+    raw_quote = raw_quote[0]
+    quote = {
+        "name": raw_quote.get("f14"),
+        "price": raw_quote.get("f2"),
+        "pct": raw_quote.get("f3"),
+        "turnoverWan": _number(raw_quote.get("f6")) / 10000 if _number(raw_quote.get("f6")) is not None else None,
+    }
+    return build_extra_fund_row(code, estimate, quote, now=now or datetime.now(timezone(timedelta(hours=8))))
+
+
+def append_extra_funds(data, codes=("501312",), timeout=12):
+    funds = list(data.get("funds") or [])
+    warnings = list(data.get("warnings") or [])
+    existing = {str(row.get("code") or "") for row in funds}
+    for code in codes:
+        if str(code) in existing:
+            continue
+        try:
+            funds.append(load_extra_fund(str(code), timeout=timeout))
+        except Exception:
+            warnings.append(f"{code} 补充数据暂时不可用")
+    return {**data, "funds": funds, "warnings": warnings}

@@ -1,6 +1,12 @@
 import unittest
 
-from backend_core import build_response, parse_haoetf
+from backend_core import (
+    build_extra_fund_row,
+    build_response,
+    is_cache_usable,
+    parse_haoetf,
+    parse_jsonp_payload,
+)
 
 
 QDII_HTML = """
@@ -78,6 +84,53 @@ class BackendParserTests(unittest.TestCase):
         self.assertEqual(response["source"], "HaoETF")
         self.assertFalse(response["stale"])
         self.assertEqual(response["cacheAgeSeconds"], 0)
+
+    def test_cache_older_than_six_hours_is_rejected(self):
+        self.assertTrue(is_cache_usable(updated_at=1, now=21601, max_age=21600))
+        self.assertFalse(is_cache_usable(updated_at=1, now=21602, max_age=21600))
+
+    def test_501312_uses_published_nav_not_stale_estimate(self):
+        row = build_extra_fund_row(
+            "501312",
+            {
+                "fundcode": "501312",
+                "name": "海外科技LOF",
+                "dwjz": "2.3699",
+                "jzrq": "2026-07-10",
+                "gsz": "2.1000",
+                "gztime": "2026-07-09 15:00",
+            },
+            {"price": 2.367, "pct": 0.17, "turnoverWan": 100, "name": "海外科技LOF"},
+            now="2026-07-11T11:00:00+08:00",
+        )
+        self.assertEqual(row["latestEstimate"], "2.3699")
+        self.assertEqual(row["realtimeEstimate"], "")
+        self.assertEqual(row["realtimePremium"], "")
+        self.assertEqual(row["latestPremium"], "-0.12%")
+        self.assertFalse(row["realtimeFresh"])
+
+    def test_same_day_501312_estimate_may_be_displayed_as_realtime(self):
+        row = build_extra_fund_row(
+            "501312",
+            {
+                "fundcode": "501312",
+                "name": "海外科技LOF",
+                "dwjz": "2.3000",
+                "jzrq": "2026-07-10",
+                "gsz": "2.3500",
+                "gztime": "2026-07-11 10:30",
+            },
+            {"price": 2.367, "pct": 0.17, "turnoverWan": 100, "name": "海外科技LOF"},
+            now="2026-07-11T11:00:00+08:00",
+        )
+        self.assertEqual(row["realtimeEstimate"], "2.3500")
+        self.assertEqual(row["realtimePremium"], "0.72%")
+        self.assertTrue(row["realtimeFresh"])
+
+    def test_fund_jsonp_payload_is_parsed_without_executing_script(self):
+        payload = parse_jsonp_payload('jsonpgz({"fundcode":"501312","dwjz":"2.3699"});', "jsonpgz")
+        self.assertEqual(payload["fundcode"], "501312")
+        self.assertEqual(payload["dwjz"], "2.3699")
 
 
 if __name__ == "__main__":
