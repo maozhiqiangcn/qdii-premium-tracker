@@ -66,6 +66,23 @@ function shouldNotifyAlert({ alertFunds, lastSignature, lastAt, now, cooldownMs 
   return { notify: now - lastAt >= cooldownMs, signature };
 }
 
+function createSettingsSnapshot(state) {
+  return {
+    alertEnabled: state.alertEnabled !== false,
+    threshold: Number(state.threshold) || 0,
+    lastAlertAt: Number(state.lastAlertAt) || 0,
+    lastAlertSignature: String(state.lastAlertSignature || ""),
+  };
+}
+
+function normalizePayloadFunds(funds, stale) {
+  return (funds || []).map((fund) =>
+    stale
+      ? { ...fund, realtimeEstimate: "", realtimePremium: "", realtimeFresh: false }
+      : fund,
+  );
+}
+
 function percentClass(value) {
   if (!Number.isFinite(value)) return "neutral";
   if (value > 0) return "positive";
@@ -87,7 +104,9 @@ function getCategory(fund) {
 
 module.exports = {
   buildFundView,
+  createSettingsSnapshot,
   filterAndSortFunds,
+  normalizePayloadFunds,
   summarizeFunds,
   shouldNotifyAlert,
 };

@@ -1,12 +1,17 @@
 const { API_BASE } = require("../../config");
 const {
   buildFundView,
+  createSettingsSnapshot,
   filterAndSortFunds,
+  normalizePayloadFunds,
   shouldNotifyAlert,
   summarizeFunds,
 } = require("./fundMetrics");
 
-const STORAGE_KEY = "lof-premium-settings-v1";
+const STORAGE_KEY = "lof-premium-settings-v2";
+const LEGACY_STORAGE_KEY = "lof-premium-settings-v1";
+const SNAPSHOT_KEY = "lof-premium-last-success-v1";
+const SNAPSHOT_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 const DEFAULT_THRESHOLD = 3;
 const AUTO_REFRESH_MS = 60 * 1000;
 const ALERT_COOLDOWN_MS = 5 * 60 * 1000;
@@ -25,13 +30,14 @@ Page({
       { key: "alert", label: "提醒" },
     ],
     error: "",
+    dataNotice: "",
     funds: [],
     lastAlertAt: 0,
     lastAlertSignature: "",
     loading: false,
     query: "",
     statusText: "待刷新",
-    systemError: "--",
+    estimateChange: "--",
     threshold: DEFAULT_THRESHOLD,
     totalCount: 0,
     updatedAt: "",
@@ -39,9 +45,11 @@ Page({
   },
 
   onLoad() {
-    const settings = wx.getStorageSync(STORAGE_KEY) || {};
+    const settings = wx.getStorageSync(STORAGE_KEY) || wx.getStorageSync(LEGACY_STORAGE_KEY) || {};
     this.setData({
       alertEnabled: settings.alertEnabled !== false,
+      lastAlertAt: Number(settings.lastAlertAt) || 0,
+      lastAlertSignature: String(settings.lastAlertSignature || ""),
       threshold: Number(settings.threshold) || DEFAULT_THRESHOLD,
     });
     this.refresh();
@@ -91,16 +99,35 @@ Page({
   },
 
   async refresh() {
-    this.setData({ loading: true, error: "", statusText: "更新中" });
+    if (this.data.loading) return;
+    this.setData({ loading: true, error: "", dataNotice: "", statusText: "更新中" });
 
     try {
-      const result = await loadHaoEtf();
-      if (!result.ok) throw new Error(result.error || "接口返回失败");
+      let result;
+      let networkError;
+      try {
+        result = await loadHaoEtf();
+        if (!result.ok) throw new Error(result.error || "接口返回失败");
+        wx.setStorageSync(SNAPSHOT_KEY, { savedAt: Date.now(), payload: result });
+      } catch (error) {
+        networkError = error;
+        const snapshot = wx.getStorageSync(SNAPSHOT_KEY) || {};
+        if (snapshot.payload && Date.now() - Number(snapshot.savedAt) <= SNAPSHOT_MAX_AGE_MS) result = snapshot.payload;
+        else throw error;
+      }
 
-      const funds = (result.data.funds || []).map((fund) => buildFundView(fund, this.data.threshold));
+      const stale = Boolean(networkError || result.stale);
+      const funds = normalizePayloadFunds(result.data.funds || [], stale).map((fund) => buildFundView(fund, this.data.threshold));
+      const sourceTime = result.sourceUpdatedAt || result.generatedAt;
+      const noticeParts = [];
+      if (stale) noticeParts.push("缓存数据");
+      if (sourceTime) noticeParts.push(`来源时间 ${formatDateTime(new Date(sourceTime))}`);
+      if (result.warnings?.length) noticeParts.push(result.warnings.join("；"));
+      if (networkError) noticeParts.push(`本次刷新失败：${formatError(networkError)}`);
       this.rebuildFunds(funds, {
-        statusText: "运行中",
-        updatedAt: formatDateTime(new Date()),
+        dataNotice: noticeParts.join(" · "),
+        statusText: stale ? "缓存数据" : "运行中",
+        updatedAt: sourceTime ? formatDateTime(new Date(sourceTime)) : formatDateTime(new Date()),
       });
       this.maybeNotify(funds);
     } catch (error) {
@@ -124,7 +151,7 @@ Page({
       alertCount: summary.alertCount,
       avgPremium: summary.avgPremium,
       funds: rebuilt,
-      systemError: calculateSystemError(rebuilt),
+      estimateChange: calculateEstimateChange(rebuilt),
       totalCount: summary.total,
     });
     this.applyFilters();
@@ -153,10 +180,13 @@ Page({
 
     if (!result.notify) return;
 
-    this.setData({
-      lastAlertAt: now,
-      lastAlertSignature: result.signature,
-    });
+    this.setData(
+      {
+        lastAlertAt: now,
+        lastAlertSignature: result.signature,
+      },
+      () => this.saveSettings(),
+    );
 
     if (wx.vibrateShort) wx.vibrateShort({ type: "medium" });
     wx.showModal({
@@ -170,10 +200,7 @@ Page({
   },
 
   saveSettings() {
-    wx.setStorageSync(STORAGE_KEY, {
-      alertEnabled: this.data.alertEnabled,
-      threshold: this.data.threshold,
-    });
+    wx.setStorageSync(STORAGE_KEY, createSettingsSnapshot(this.data));
   },
 
   startAutoRefresh() {
@@ -194,7 +221,7 @@ function request(url) {
     wx.request({
       url,
       method: "GET",
-      timeout: 15000,
+      timeout: 12000,
       success: (response) => resolve(response.data),
       fail: reject,
     });
@@ -214,7 +241,7 @@ async function loadHaoEtf() {
   return request(`${API_BASE}/api/haoetf`);
 }
 
-function calculateSystemError(funds) {
+function calculateEstimateChange(funds) {
   const errors = funds
     .map((fund) => Math.abs(parsePercent(fund.realtimePremium) - parsePercent(fund.latestPremium)))
     .filter(Number.isFinite);

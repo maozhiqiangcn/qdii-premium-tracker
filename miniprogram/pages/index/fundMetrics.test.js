@@ -1,12 +1,40 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
 
 const {
   buildFundView,
+  createSettingsSnapshot,
   filterAndSortFunds,
+  normalizePayloadFunds,
   summarizeFunds,
   shouldNotifyAlert,
 } = require("./fundMetrics");
+
+test("mini program labels describe displayed values", () => {
+  const wxml = fs.readFileSync("miniprogram/pages/index/index.wxml", "utf8");
+  assert.match(wxml, /估值变动/);
+  assert.match(wxml, /T-1溢价 \/ 日期/);
+  assert.doesNotMatch(wxml, /系统误差|实时溢价率 \/ 天数/);
+});
+
+test("mini program settings include alert cooldown", () => {
+  assert.deepEqual(
+    createSettingsSnapshot({ alertEnabled: true, threshold: 3, lastAlertAt: 10, lastAlertSignature: "513100" }),
+    { alertEnabled: true, threshold: 3, lastAlertAt: 10, lastAlertSignature: "513100" },
+  );
+});
+
+test("stale payload clears realtime values", () => {
+  const funds = normalizePayloadFunds(
+    [{ code: "513100", realtimeEstimate: "2.10", realtimePremium: "3.00%", latestPremium: "4.00%" }],
+    true,
+  );
+  assert.equal(funds[0].realtimeEstimate, "");
+  assert.equal(funds[0].realtimePremium, "");
+  assert.equal(funds[0].latestPremium, "4.00%");
+  assert.equal(funds[0].realtimeFresh, false);
+});
 
 test("buildFundView parses premium values and marks alerts", () => {
   const fund = buildFundView(

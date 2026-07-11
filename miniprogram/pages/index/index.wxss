@@ -111,6 +111,16 @@
   padding: 18rpx;
 }
 
+.notice {
+  margin: 16rpx 0;
+  padding: 18rpx 20rpx;
+  border: 1rpx solid #f0c36d;
+  border-radius: 12rpx;
+  background: #fff8e6;
+  color: #7a4d00;
+  font-size: 24rpx;
+}
+
 .fund-list {
   display: flex;
   flex-direction: column;

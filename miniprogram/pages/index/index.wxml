@@ -1,7 +1,7 @@
 <view class="page">
   <view class="hero">
     <view class="brand">
-      <view class="avatar">守</view>
+      <view class="avatar">毛</view>
       <view>
         <view class="title">LOF基金溢价率</view>
         <view class="subtitle">手机实时监控 · 规则提醒</view>
@@ -20,8 +20,8 @@
       <text class="status-value">{{statusText}}</text>
     </view>
     <view class="status-card">
-      <text class="status-label">系统误差</text>
-      <text class="status-value amber">{{systemError}}</text>
+      <text class="status-label">估值变动</text>
+      <text class="status-value amber">{{estimateChange}}</text>
     </view>
     <view class="status-card">
       <text class="status-label">最近刷新</text>
@@ -68,12 +68,13 @@
   </view>
 
   <view wx:if="{{error}}" class="error">{{error}}</view>
+  <view wx:if="{{dataNotice}}" class="notice">{{dataNotice}}</view>
 
   <view class="table-head">
     <text>基金</text>
     <text>实时净值 / 成交额</text>
     <text>收盘价 / 涨幅</text>
-    <text>实时溢价率 / 天数</text>
+    <text>实时溢价率 / T-1溢价 / 日期</text>
   </view>
 
   <view class="fund-list">
