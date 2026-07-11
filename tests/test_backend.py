@@ -4,8 +4,10 @@ from backend_core import (
     build_extra_fund_row,
     build_response,
     is_cache_usable,
+    load_with_retry,
     parse_haoetf,
     parse_jsonp_payload,
+    parse_sina_quote,
 )
 
 
@@ -127,10 +129,39 @@ class BackendParserTests(unittest.TestCase):
         self.assertEqual(row["realtimePremium"], "0.72%")
         self.assertTrue(row["realtimeFresh"])
 
+    def test_extra_row_reports_actual_market_source(self):
+        row = build_extra_fund_row(
+            "501312",
+            {"dwjz": "2.3000", "jzrq": "2026-07-10"},
+            {"price": 2.3, "name": "海外科技LOF", "source": "新浪财经"},
+            now="2026-07-11T11:00:00+08:00",
+        )
+        self.assertEqual(row["source"], "天天基金/新浪财经")
+
     def test_fund_jsonp_payload_is_parsed_without_executing_script(self):
         payload = parse_jsonp_payload('jsonpgz({"fundcode":"501312","dwjz":"2.3699"});', "jsonpgz")
         self.assertEqual(payload["fundcode"], "501312")
         self.assertEqual(payload["dwjz"], "2.3699")
+
+    def test_transient_extra_source_failure_retries_once(self):
+        calls = []
+
+        def loader():
+            calls.append(1)
+            if len(calls) == 1:
+                raise OSError("temporary failure")
+            return "ok"
+
+        self.assertEqual(load_with_retry(loader, retries=1, delay=0), "ok")
+        self.assertEqual(len(calls), 2)
+
+    def test_sina_quote_fallback_is_normalized(self):
+        text = 'var hq_str_sh501312="海外科技LOF,2.341,2.328,2.349,2.356,2.339,2.349,2.350,24745848,58102940.000";'
+        quote = parse_sina_quote(text, "501312")
+        self.assertEqual(quote["name"], "海外科技LOF")
+        self.assertEqual(quote["price"], 2.349)
+        self.assertAlmostEqual(quote["pct"], 0.902, places=3)
+        self.assertAlmostEqual(quote["turnoverWan"], 5810.294)
 
 
 if __name__ == "__main__":

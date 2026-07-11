@@ -221,7 +221,7 @@ def build_extra_fund_row(code, estimate, quote, now=None):
         "purchaseLimit": "",
         "purchaseFee": "",
         "redeemFee": "",
-        "source": "天天基金/东方财富",
+        "source": f"天天基金/{quote.get('source') or '东方财富'}",
         "realtimeFresh": realtime_fresh,
         "estimateTime": estimate_time,
     }
@@ -235,22 +235,28 @@ def parse_jsonp_payload(text, callback):
     return json.loads(match.group(1))
 
 
-def _fetch_text(url, timeout=12):
-    request = Request(url, headers={"User-Agent": "Mozilla/5.0"})
+def _fetch_text(url, timeout=12, headers=None, encoding="utf-8"):
+    request_headers = {"User-Agent": "Mozilla/5.0"}
+    request_headers.update(headers or {})
+    request = Request(url, headers=request_headers)
     with urlopen(request, timeout=timeout) as response:
-        return response.read().decode("utf-8", errors="replace")
+        return response.read().decode(encoding, errors="replace")
 
 
-def load_haoetf_source(url="https://www.haoetf.com/", timeout=12, retries=1):
+def load_with_retry(loader, retries=1, delay=0.2):
     last_error = None
     for attempt in range(retries + 1):
         try:
-            return parse_haoetf(_fetch_text(url, timeout=timeout))
+            return loader()
         except Exception as exc:
             last_error = exc
-            if attempt < retries:
-                time.sleep(0.2)
+            if attempt < retries and delay:
+                time.sleep(delay)
     raise last_error
+
+
+def load_haoetf_source(url="https://www.haoetf.com/", timeout=12, retries=1):
+    return load_with_retry(lambda: parse_haoetf(_fetch_text(url, timeout=timeout)), retries=retries)
 
 
 def load_extra_fund(code="501312", timeout=12, now=None):
@@ -261,18 +267,49 @@ def load_extra_fund(code="501312", timeout=12, now=None):
         "https://push2.eastmoney.com/api/qt/ulist.np/get"
         f"?fltt=2&secids={secid}&fields=f12,f14,f2,f3,f4,f6&_={int(time.time() * 1000)}"
     )
-    quote_payload = json.loads(_fetch_text(quote_url, timeout))
-    raw_quote = (quote_payload.get("data") or {}).get("diff") or []
-    if not raw_quote:
-        raise ValueError(f"market quote missing: {code}")
-    raw_quote = raw_quote[0]
-    quote = {
-        "name": raw_quote.get("f14"),
-        "price": raw_quote.get("f2"),
-        "pct": raw_quote.get("f3"),
-        "turnoverWan": _number(raw_quote.get("f6")) / 10000 if _number(raw_quote.get("f6")) is not None else None,
-    }
+    try:
+        quote_payload = json.loads(_fetch_text(quote_url, timeout))
+        raw_quote = (quote_payload.get("data") or {}).get("diff") or []
+        if not raw_quote:
+            raise ValueError(f"market quote missing: {code}")
+        raw_quote = raw_quote[0]
+        quote = {
+            "name": raw_quote.get("f14"),
+            "price": raw_quote.get("f2"),
+            "pct": raw_quote.get("f3"),
+            "turnoverWan": _number(raw_quote.get("f6")) / 10000 if _number(raw_quote.get("f6")) is not None else None,
+            "source": "东方财富",
+        }
+    except Exception:
+        market = "sh" if str(code).startswith("5") else "sz"
+        sina_text = _fetch_text(
+            f"https://hq.sinajs.cn/list={market}{code}",
+            timeout,
+            headers={"Referer": "https://finance.sina.com.cn/"},
+            encoding="gbk",
+        )
+        quote = parse_sina_quote(sina_text, code)
     return build_extra_fund_row(code, estimate, quote, now=now or datetime.now(timezone(timedelta(hours=8))))
+
+
+def parse_sina_quote(text, code):
+    match = re.search(r'="(.*)";?\s*$', text or "")
+    if not match:
+        raise ValueError(f"Sina quote missing: {code}")
+    fields = match.group(1).split(",")
+    if len(fields) < 10:
+        raise ValueError(f"Sina quote incomplete: {code}")
+    previous_close = _number(fields[2])
+    price = _number(fields[3])
+    turnover = _number(fields[9])
+    pct = _premium(price, previous_close)
+    return {
+        "name": fields[0],
+        "price": price,
+        "pct": pct,
+        "turnoverWan": turnover / 10000 if turnover is not None else None,
+        "source": "新浪财经",
+    }
 
 
 def append_extra_funds(data, codes=("501312",), timeout=12):
@@ -283,7 +320,7 @@ def append_extra_funds(data, codes=("501312",), timeout=12):
         if str(code) in existing:
             continue
         try:
-            funds.append(load_extra_fund(str(code), timeout=timeout))
+            funds.append(load_with_retry(lambda: load_extra_fund(str(code), timeout=timeout), retries=1))
         except Exception:
             warnings.append(f"{code} 补充数据暂时不可用")
     return {**data, "funds": funds, "warnings": warnings}
